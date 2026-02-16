@@ -22,7 +22,7 @@ Built using industry-standard modeling practices and zero hardcoded values.
 - Conditional liquidity alerts
 
 📷 Screenshot:
-![Cash Flow](screenshots/cash-flow-model.png)
+![Cash Flow](cash-flow-model.png)
 
 ---
 
