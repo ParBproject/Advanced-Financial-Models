@@ -34,7 +34,7 @@ Built using industry-standard modeling practices and zero hardcoded values.
 - Portfolio exposure summary
 
 📷 Screenshot:
-![Loan Risk](screenshots/loan-risk-model.png)
+![Loan Risk](loan-risk-model.png)
 
 ---
 
@@ -47,7 +47,7 @@ Built using industry-standard modeling practices and zero hardcoded values.
 - Solver optimization ready
 
 📷 Screenshot:
-![Portfolio](screenshots/portfolio-allocation.png)
+![Portfolio](portfolio-allocation.png)
 
 ---
 
