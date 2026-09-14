@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from statistics import fmean
-from typing import Mapping
 
 
 DEFAULT_CAPEX = {2: 15_000.0, 5: 15_000.0, 9: 15_000.0}
@@ -58,12 +58,13 @@ def _monthly_discount_rate(annual_rate: float) -> float:
 
 
 def forecast_cash_flow(
-    assumptions: CashFlowAssumptions = CashFlowAssumptions(),
+    assumptions: CashFlowAssumptions | None = None,
     *,
     months: int = 12,
     capex_by_month: Mapping[int, float] | None = None,
 ) -> CashFlowForecast:
     """Build a monthly cash-flow forecast from the workbook's documented assumptions."""
+    assumptions = assumptions or CashFlowAssumptions()
     assumptions.validate()
     if isinstance(months, bool) or not isinstance(months, int) or months < 1:
         raise ValueError("months must be a positive integer")
