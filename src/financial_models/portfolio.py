@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from math import sqrt
-from typing import Iterable
 
 
 @dataclass(frozen=True)
@@ -52,7 +52,7 @@ def portfolio_metrics(
     if investment_amount < 0:
         raise ValueError("investment amount must be non-negative")
     if isinstance(horizon_years, bool) or not isinstance(horizon_years, int):
-        raise ValueError("horizon years must be a non-negative integer")
+        raise TypeError("horizon years must be a non-negative integer")
     if horizon_years < 0:
         raise ValueError("horizon years must be a non-negative integer")
 
