@@ -39,5 +39,5 @@ print(f"  min volatility:  {min_volatility.volatility:.2%}")
 print(f"  frontier points: {len(frontier)}")
 print()
 print("Max-Sharpe weights")
-for asset, weight in zip(assets, max_sharpe.weights):
+for asset, weight in zip(assets, max_sharpe.weights, strict=True):
     print(f"  {asset.name:<24} {weight:>7.2%}")
