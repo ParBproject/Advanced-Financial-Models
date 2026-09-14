@@ -2,7 +2,12 @@ import math
 import unittest
 
 from financial_models.cash_flow import CashFlowAssumptions, forecast_cash_flow
-from financial_models.credit_risk import Loan, assess_loan, probability_of_default, summarize_portfolio
+from financial_models.credit_risk import (
+    Loan,
+    assess_loan,
+    probability_of_default,
+    summarize_portfolio,
+)
 from financial_models.portfolio import portfolio_metrics, workbook_balanced_portfolio
 
 
