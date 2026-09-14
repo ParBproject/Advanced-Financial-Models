@@ -4,8 +4,8 @@ from financial_models import (
     forecast_cash_flow,
     portfolio_metrics,
     summarize_portfolio,
+    workbook_balanced_portfolio,
 )
-from financial_models.portfolio import workbook_balanced_portfolio
 
 
 cash = forecast_cash_flow(CashFlowAssumptions())
