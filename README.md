@@ -5,12 +5,14 @@
 [![Streamlit](https://img.shields.io/badge/Streamlit-Interactive_Dashboard-FF4B4B?logo=streamlit&logoColor=white)](dashboard/app.py)
 [![Excel](https://img.shields.io/badge/Microsoft_Excel-Financial_Modeling-217346?logo=microsoftexcel&logoColor=white)](Advanced_Financial_Models.xlsx)
 
-A portfolio-grade financial analytics project combining an executive-ready Excel workbook, a reproducible Python modeling core, and an interactive decision dashboard. It covers **liquidity forecasting, credit expected loss, covariance-aware portfolio analytics, stress testing, and Monte Carlo risk analysis** while keeping assumptions explicit and calculations testable.
+A portfolio-grade financial analytics project combining an executive-ready Excel workbook, a reproducible Python modeling core, and an interactive decision dashboard. It covers **liquidity forecasting, credit expected loss and concentration, covariance-aware portfolio analytics, stress testing, and Monte Carlo risk analysis** while keeping assumptions explicit and calculations testable.
 
 ## What this project demonstrates
 
 - Financial forecasting and liquidity scenario design
 - Credit-risk modeling with **PD × LGD × EAD**
+- Borrower concentration, HHI, top-N exposure, and effective borrower count
+- Segment-level stressed-loss attribution
 - Cash-flow and credit stress testing
 - Portfolio return, volatility, Sharpe ratio, and long-horizon projection
 - Covariance/correlation validation and **wᵀΣw** portfolio risk
@@ -26,6 +28,8 @@ A portfolio-grade financial analytics project combining an executive-ready Excel
 |---|---|---:|---:|---:|
 | Cash-flow forecast | Liquidity planning and funding needs | ✅ | ✅ | ✅ |
 | Credit expected loss | Loan monitoring and portfolio loss estimation | ✅ | ✅ | ✅ |
+| Credit concentration | Borrower concentration and diversification risk | — | ✅ | — |
+| Segment stress attribution | Sources of stressed expected-loss change | — | ✅ | — |
 | Baseline portfolio allocation | Workbook-comparable risk/return analysis | ✅ | ✅ | ✅ |
 | Covariance-aware portfolio analytics | Diversification and frontier analysis | — | ✅ | ✅ |
 | Cash-flow / credit stress tests | Downturn and loss-severity scenarios | — | ✅ | ✅ |
@@ -40,15 +44,7 @@ python -m pip install -e ".[dashboard]"
 streamlit run dashboard/app.py
 ```
 
-The dashboard includes five tabs:
-
-- **Overview** — executive snapshot across liquidity, credit, and portfolio risk;
-- **Cash Flow** — editable starting cash, revenue, growth, and OpEx assumptions with monthly charts;
-- **Credit Risk** — editable loan exposures/scores, LGD control, PD bands, expected-loss table and risk ratings;
-- **Portfolio** — editable return/volatility/weight assumptions, covariance-aware metrics, simulated portfolios, efficient frontier, max-Sharpe and minimum-volatility views;
-- **Stress & Monte Carlo** — liquidity shocks, PD/LGD stress, terminal-value percentiles, loss probability, and distribution chart.
-
-The UI uses the same functions covered by the repository's numerical regression suite. Model logic stays in `src/financial_models/`; `dashboard/app.py` is an orchestration and visualization layer.
+The dashboard includes executive KPIs, editable cash-flow assumptions, loan expected-loss analysis, covariance-aware portfolio simulation/frontier views, liquidity/credit stress controls, and Monte Carlo terminal-value distributions.
 
 ## 1. Cash-Flow Forecast
 
@@ -58,11 +54,9 @@ The 12-month model compounds revenue growth, forecasts operating expenses, rent,
 
 **Core outputs:** ending cash, average monthly net cash flow, minimum/maximum liquidity, and NPV.
 
-### Cash-flow stress testing
-
 `CashFlowStressScenario` can independently shock starting revenue, monthly growth, operating-expense ratio, fixed costs, and CapEx. The result reports stressed ending cash and NPV alongside the unchanged baseline.
 
-## 2. Credit Expected-Loss Model
+## 2. Credit Risk Analytics
 
 ![Credit expected-loss model](loan-risk-model.png)
 
@@ -72,9 +66,29 @@ The credit model maps FICO-style score bands to probability of default, applies 
 
 The reproducible core aggregates portfolio exposure, expected loss, expected-loss ratio, average score, and Low/Medium/High risk counts.
 
-### Credit stress testing
+### Stress testing
 
 `CreditStressScenario` applies PD and LGD multipliers to every exposure. Stressed PD and LGD are capped at 100%, so extreme scenarios remain economically bounded.
+
+### Concentration risk
+
+`credit_concentration()` aggregates multiple facilities to the borrower level and reports:
+
+- largest-borrower exposure share;
+- configurable top-N exposure share;
+- **Herfindahl-Hirschman Index (HHI)** from borrower exposure shares;
+- effective borrower count (`1 / HHI`);
+- exposure distribution by Low/Medium/High risk rating.
+
+### Segment stress attribution
+
+`segment_stress_attribution()` accepts caller-defined loan-to-segment mappings and reconciles each segment's baseline expected loss, stressed expected loss, loss change, and share of total portfolio loss change. Tests require segment totals to reconcile exactly to the portfolio-level stress result.
+
+Run the example:
+
+```bash
+python examples/credit_concentration.py
+```
 
 ## 3. Portfolio Allocation Model
 
@@ -106,20 +120,19 @@ The Monte Carlo layer calculates covariance-aware portfolio return/volatility an
 Advanced-Financial-Models/
 ├── Advanced_Financial_Models.xlsx       # Original Excel modeling suite
 ├── Financial_Models_User_Guide.txt      # Workbook assumptions and usage
-├── dashboard/
-│   └── app.py                            # Interactive Streamlit decision dashboard
-├── .streamlit/
-│   └── config.toml                       # Dashboard theme/server settings
+├── dashboard/app.py                     # Streamlit decision dashboard
 ├── src/financial_models/
 │   ├── cash_flow.py                      # 12-month liquidity forecast
 │   ├── credit_risk.py                    # PD/LGD/EAD expected-loss model
+│   ├── credit_concentration.py           # HHI, top-N and stress attribution
 │   ├── portfolio.py                      # Excel-comparable baseline allocation
-│   ├── advanced_portfolio.py             # Covariance, simulation, efficient frontier
+│   ├── advanced_portfolio.py             # Covariance, simulation, frontier
 │   └── stress_testing.py                 # Stress scenarios + Monte Carlo
 ├── examples/
 │   ├── basic_analysis.py
 │   ├── efficient_frontier.py
-│   └── stress_analysis.py
+│   ├── stress_analysis.py
+│   └── credit_concentration.py
 ├── tests/                                # Numerical regression suite
 ├── .github/workflows/ci.yml              # Python 3.10 + 3.12 checks
 └── CONTRIBUTING.md
@@ -135,6 +148,7 @@ python -m pip install -e .
 python examples/basic_analysis.py
 python examples/efficient_frontier.py
 python examples/stress_analysis.py
+python examples/credit_concentration.py
 ```
 
 For the dashboard:
@@ -163,13 +177,13 @@ The automated suite pins important behavior, including:
 
 - Month 1 cash flow: **$100,000 revenue − 60% OpEx − $8,000 rent − $5,000 loan = $27,000 net cash flow**
 - Credit example: **$100,000 exposure × 15% PD × 45% LGD = $6,750 expected loss**
-- Baseline allocation weights/return calculation
-- Hand-calculated two-asset covariance risk using **wᵀΣw**
+- hand-calculated borrower concentration where HHI = **0.375** and top-2 share = **75%**
+- segment stress contributions reconciling exactly to total stressed portfolio loss
+- baseline allocation weights/return calculation
+- hand-calculated two-asset covariance risk using **wᵀΣw**
 - rejection of asymmetric and non-positive-semidefinite matrices
 - seeded portfolio-simulation reproducibility and allocation constraints
-- neutral stress scenarios reproducing baseline results
-- severe cash-flow stress lowering liquidity and NPV
-- PD/LGD caps at 100%
+- neutral/severe stress behavior and PD/LGD caps
 - zero-volatility Monte Carlo matching deterministic compounding
 - ordered terminal percentiles and bounded loss probabilities
 
@@ -180,7 +194,7 @@ CI installs the package plus dashboard dependencies, runs correctness linting, e
 - **[Download the Excel workbook](Advanced_Financial_Models.xlsx)**
 - **[Read the full user guide](Financial_Models_User_Guide.txt)**
 
-The workbook remains the spreadsheet scenario-analysis deliverable. The Python package adds reproducibility and advanced analytics; the dashboard makes those analytics interactive.
+The workbook remains the spreadsheet scenario-analysis deliverable. The Python package adds reproducibility and advanced analytics; the dashboard makes core analytics interactive.
 
 ## Model assumptions
 
@@ -189,15 +203,16 @@ The workbook remains the spreadsheet scenario-analysis deliverable. The Python p
 - Portfolio Monte Carlo uses a lognormal approximation calibrated to portfolio expected return and covariance-aware volatility.
 - Credit loss is **expected loss**, not regulatory capital or unexpected loss.
 - Credit PD mappings and stress multipliers are illustrative portfolio assumptions, not underwriting advice.
+- HHI and top-N metrics describe exposure concentration; they do not estimate default correlation.
 - Cash-flow stresses are deterministic scenarios and do not estimate macroeconomic probabilities.
 - Historical returns and volatility assumptions do not guarantee future performance.
 
 ## Roadmap
 
-- Credit concentration analytics and segment-level stress attribution
 - Exportable scenario/comparison reports
 - Optional historical-data estimation for returns/covariance
 - Deployable hosted dashboard configuration
+- Additional sector/geography concentration dimensions
 
 ## Disclaimer
 
