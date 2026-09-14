@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from statistics import fmean
-from typing import Iterable
 
 
 @dataclass(frozen=True)
@@ -100,9 +100,7 @@ def summarize_portfolio(
 
     total_exposure = sum(result.loan.exposure for result in assessed)
     total_expected_loss = sum(result.expected_loss for result in assessed)
-    expected_loss_ratio = (
-        total_expected_loss / total_exposure if total_exposure else 0.0
-    )
+    expected_loss_ratio = total_expected_loss / total_exposure if total_exposure else 0.0
 
     return PortfolioCreditSummary(
         loans=assessed,
