@@ -1,8 +1,19 @@
 """Reproducible financial-modeling core for the portfolio workbook."""
 
 from .cash_flow import CashFlowAssumptions, CashFlowForecast, CashFlowPeriod, forecast_cash_flow
-from .credit_risk import Loan, LoanRiskResult, PortfolioCreditSummary, assess_loan, summarize_portfolio
-from .portfolio import AssetAllocation, PortfolioMetrics, portfolio_metrics
+from .credit_risk import (
+    Loan,
+    LoanRiskResult,
+    PortfolioCreditSummary,
+    assess_loan,
+    summarize_portfolio,
+)
+from .portfolio import (
+    AssetAllocation,
+    PortfolioMetrics,
+    portfolio_metrics,
+    workbook_balanced_portfolio,
+)
 
 __all__ = [
     "AssetAllocation",
@@ -17,4 +28,5 @@ __all__ = [
     "forecast_cash_flow",
     "portfolio_metrics",
     "summarize_portfolio",
+    "workbook_balanced_portfolio",
 ]
