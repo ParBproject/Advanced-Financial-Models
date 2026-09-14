@@ -1,4 +1,5 @@
 import unittest
+from itertools import pairwise
 
 import numpy as np
 
@@ -131,7 +132,7 @@ class SimulationTests(unittest.TestCase):
 
         self.assertGreaterEqual(len(frontier), 2)
         self.assertLessEqual(len(frontier), 15)
-        for previous, current in zip(frontier, frontier[1:], strict=True):
+        for previous, current in pairwise(frontier):
             self.assertLessEqual(previous.volatility, current.volatility + 1e-12)
             self.assertLess(previous.expected_return, current.expected_return)
 
