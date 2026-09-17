@@ -4,17 +4,18 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "advanced-financial-models"
-version = "0.5.0"
-description = "Reproducible cash-flow, credit-risk, and portfolio models that complement the Excel workbook."
+version = "0.6.0"
+description = "Reproducible cash-flow, credit-risk, market-risk, and portfolio analytics for quantitative finance and decision support."
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [{name = "ParBproject"}]
-dependencies = ["numpy>=1.26,<3"]
+dependencies = ["numpy>=1.26,<3", "pandas>=2,<4"]
 
 [project.optional-dependencies]
 dev = ["ruff>=0.8"]
-dashboard = ["pandas>=2,<4", "streamlit>=1.45,<2"]
+dashboard = ["streamlit>=1.45,<2"]
+market-data = ["yfinance>=0.2.54,<1"]
 
 [tool.setuptools]
 package-dir = {"" = "src"}
