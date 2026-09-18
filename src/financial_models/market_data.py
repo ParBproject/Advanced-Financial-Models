@@ -256,3 +256,101 @@ def download_adjusted_close(
     if isinstance(prices, pd.Series):
         prices = prices.to_frame(name=symbols[0])
     return _validate_prices(prices)
+
+
+@dataclass(frozen=True)
+class RebalancedBacktestResult:
+    """Historical fixed-allocation backtest with explicit rebalancing costs."""
+
+    returns: pd.Series
+    wealth: pd.Series
+    turnover: pd.Series
+    transaction_costs: pd.Series
+
+    @property
+    def total_turnover(self) -> float:
+        return float(self.turnover.sum())
+
+    @property
+    def total_transaction_cost(self) -> float:
+        return float(self.transaction_costs.sum())
+
+
+def backtest_rebalanced_portfolio(
+    prices: pd.DataFrame,
+    weights: Sequence[float],
+    *,
+    rebalance_every: int = 21,
+    transaction_cost_bps: float = 5.0,
+    initial_value: float = 1.0,
+) -> RebalancedBacktestResult:
+    """Backtest a long-only target allocation with periodic rebalancing and costs.
+
+    Turnover is one-way turnover: half the absolute change in portfolio weights.
+    Transaction cost is applied as turnover multiplied by the supplied basis-point rate.
+    """
+    if isinstance(rebalance_every, bool) or not isinstance(rebalance_every, int):
+        raise TypeError("rebalance_every must be a positive integer")
+    if rebalance_every < 1:
+        raise ValueError("rebalance_every must be a positive integer")
+    if transaction_cost_bps < 0 or not np.isfinite(transaction_cost_bps):
+        raise ValueError("transaction_cost_bps must be finite and non-negative")
+    if initial_value <= 0 or not np.isfinite(initial_value):
+        raise ValueError("initial_value must be finite and positive")
+
+    returns = simple_returns(prices)
+    target = np.asarray(weights, dtype=float)
+    if target.ndim != 1 or len(target) != returns.shape[1]:
+        raise ValueError("weights must match the number of price columns")
+    if not np.isfinite(target).all() or np.any(target < 0):
+        raise ValueError("weights must be finite and non-negative")
+    if abs(float(target.sum()) - 1.0) > 1e-9:
+        raise ValueError("weights must sum to 1.0")
+
+    current_weights = target.copy()
+    wealth_value = float(initial_value)
+    net_returns: list[float] = []
+    wealth_values: list[float] = []
+    turnover_values: list[float] = []
+    cost_values: list[float] = []
+    n_periods = len(returns)
+
+    for position, (_, row) in enumerate(returns.iterrows(), start=1):
+        starting_wealth = wealth_value
+        asset_returns = row.to_numpy(dtype=float)
+        gross_portfolio_return = float(current_weights @ asset_returns)
+        wealth_value *= 1.0 + gross_portfolio_return
+
+        denominator = 1.0 + gross_portfolio_return
+        drifted_weights = (
+            current_weights * (1.0 + asset_returns) / denominator
+        )
+
+        turnover = 0.0
+        transaction_cost = 0.0
+        if position % rebalance_every == 0 and position < n_periods:
+            turnover = 0.5 * float(np.abs(target - drifted_weights).sum())
+            cost_rate = turnover * transaction_cost_bps / 10_000.0
+            transaction_cost = wealth_value * cost_rate
+            wealth_value -= transaction_cost
+            current_weights = target.copy()
+        else:
+            current_weights = drifted_weights
+
+        net_return = wealth_value / starting_wealth - 1.0
+        net_returns.append(net_return)
+        wealth_values.append(wealth_value)
+        turnover_values.append(turnover)
+        cost_values.append(transaction_cost)
+
+    index = returns.index
+    return RebalancedBacktestResult(
+        returns=pd.Series(net_returns, index=index, name="portfolio_return"),
+        wealth=pd.Series(wealth_values, index=index, name="portfolio_wealth"),
+        turnover=pd.Series(turnover_values, index=index, name="turnover"),
+        transaction_costs=pd.Series(
+            cost_values,
+            index=index,
+            name="transaction_cost",
+        ),
+    )
