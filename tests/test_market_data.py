@@ -4,8 +4,10 @@ import numpy as np
 import pandas as pd
 
 from financial_models.market_data import (
+    cumulative_wealth,
     historical_risk_summary,
     historical_var_expected_shortfall,
+    performance_summary,
     portfolio_return_series,
     simple_returns,
 )
@@ -46,6 +48,29 @@ class MarketDataTests(unittest.TestCase):
         var, expected_shortfall = historical_var_expected_shortfall(returns, confidence=0.80)
         self.assertGreaterEqual(var, 0.0)
         self.assertGreaterEqual(expected_shortfall, var)
+
+    def test_performance_summary_reports_growth_and_downside_metrics(self) -> None:
+        returns = pd.Series([0.02, -0.01, 0.03, -0.02, 0.01, 0.015])
+        summary = performance_summary(
+            returns,
+            periods_per_year=12,
+            risk_free_rate=0.0,
+            confidence=0.80,
+        )
+        self.assertGreater(summary.cumulative_return, 0.0)
+        self.assertGreater(summary.cagr, 0.0)
+        self.assertGreater(summary.annualized_volatility, 0.0)
+        self.assertLessEqual(summary.max_drawdown, 0.0)
+        self.assertGreaterEqual(summary.expected_shortfall, summary.value_at_risk)
+
+    def test_cumulative_wealth_matches_compounding(self) -> None:
+        wealth = cumulative_wealth([0.10, -0.05, 0.02], initial_value=100.0)
+        expected = 100.0 * 1.10 * 0.95 * 1.02
+        self.assertAlmostEqual(wealth[-1], expected)
+
+    def test_returns_below_negative_one_are_rejected(self) -> None:
+        with self.assertRaises(ValueError):
+            performance_summary([0.01, -1.01])
 
 
 if __name__ == "__main__":
