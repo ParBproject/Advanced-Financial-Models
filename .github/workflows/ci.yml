@@ -39,5 +39,5 @@ jobs:
       - name: Compile package and dashboard
         run: python -m compileall -q src examples dashboard
 
-      - name: Verify dashboard dependencies
-        run: python -c "import pandas, streamlit; import financial_models"
+      - name: Verify analytics and dashboard dependencies
+        run: python -c "import numpy, pandas, streamlit, yfinance; import financial_models"
