@@ -24,7 +24,6 @@ from financial_models import (
     max_sharpe_portfolio,
     min_volatility_portfolio,
     performance_summary,
-    portfolio_return_series,
     simple_returns,
     simulate_long_only_portfolios,
     simulate_portfolio_terminal_values,
