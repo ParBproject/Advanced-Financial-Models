@@ -16,7 +16,7 @@ The repository is designed to demonstrate both **Quantitative Specialist** and *
 |---|---|
 | Real financial data | Historical adjusted market prices downloaded with yfinance |
 | Data analysis | pandas/NumPy transformations, returns, correlations, covariance, drawdowns |
-| Portfolio analytics | Expected return, volatility, Sharpe ratio, efficient-frontier simulation |
+| Portfolio analytics | Expected return, volatility, Sharpe ratio, efficient-frontier simulation, rebalanced backtesting |
 | Market risk | Historical VaR, Expected Shortfall, maximum drawdown, benchmark comparison |
 | Performance analytics | CAGR, annualized volatility, Sharpe, Sortino, cumulative wealth |
 | Credit risk | PD × LGD × EAD expected loss, concentration, stress attribution |
@@ -38,7 +38,9 @@ Periodic asset returns
         ↓
 Annualized return / volatility / covariance / correlation
         ↓
-Portfolio return series
+Target allocation + rebalance schedule + transaction costs
+        ↓
+Net portfolio return series
         ↓
 CAGR / Sharpe / Sortino / drawdown
         ↓
@@ -72,7 +74,7 @@ The dashboard contains six analytical views:
 - **Overview** — executive financial KPIs
 - **Cash Flow** — editable 12-month liquidity forecast
 - **Credit Risk** — borrower-level expected-loss analysis
-- **Market Risk** — real historical data, CAGR, volatility, Sharpe, Sortino, VaR, Expected Shortfall, drawdown, correlation, and benchmark comparison
+- **Market Risk** — real historical data, configurable rebalancing/transaction costs, CAGR, volatility, Sharpe, Sortino, VaR, Expected Shortfall, drawdown, correlation, and benchmark comparison
 - **Portfolio** — covariance-aware simulation and approximate efficient frontier
 - **Stress & Monte Carlo** — liquidity/credit shocks and terminal-wealth simulation
 
@@ -92,9 +94,12 @@ It calculates:
 - Sharpe ratio;
 - Sortino ratio;
 - historical Value at Risk (VaR);
-- historical Expected Shortfall (ES).
+- historical Expected Shortfall (ES);
+- periodic portfolio rebalancing;
+- one-way turnover;
+- configurable proportional transaction costs.
 
-Portfolio weights are validated and must represent a fully invested portfolio. The dashboard can compare the resulting portfolio with a selected benchmark over the same aligned observation window.
+Portfolio weights are validated and must represent a fully invested long-only portfolio. The historical backtest lets the user choose a rebalance interval and transaction-cost assumption, tracks turnover explicitly, and compares net portfolio performance with a selected benchmark over the same aligned observation window.
 
 This section uses externally downloaded historical market data. Results depend on the selected symbols, date range, and data availability.
 
@@ -221,13 +226,15 @@ The automated suite includes regression checks for:
 - VaR / Expected Shortfall ordering;
 - CAGR and cumulative wealth compounding;
 - drawdown and risk-adjusted performance behavior;
+- daily rebalancing consistency when transaction costs are zero;
+- turnover and transaction-cost effects on terminal wealth;
 - Monte Carlo percentile ordering and bounded loss probabilities.
 
 CI runs the full quality pipeline on Python **3.10 and 3.12**.
 
 ## Skills demonstrated
 
-**Quantitative finance:** covariance modeling, portfolio risk, VaR, Expected Shortfall, Monte Carlo, stress testing, Sharpe/Sortino analysis, expected loss.
+**Quantitative finance:** covariance modeling, portfolio risk, historical backtesting, turnover and transaction-cost analysis, VaR, Expected Shortfall, Monte Carlo, stress testing, Sharpe/Sortino analysis, expected loss.
 
 **Data analysis:** pandas, NumPy, data validation, time-series transformation, descriptive statistics, KPI design, benchmark comparison, visualization.
 
@@ -239,7 +246,7 @@ CI runs the full quality pipeline on Python **3.10 and 3.12**.
 
 - Historical market data is obtained from an external provider through `yfinance`; availability and revisions are provider-dependent.
 - Historical return and covariance estimates are sample estimates and can change materially with the selected period.
-- Portfolio optimization and simulations do not include taxes, market impact, or every implementation cost.
+- The historical portfolio backtest includes configurable proportional transaction costs, but not taxes, bid-ask spread, market impact, or every implementation cost.
 - Credit PD mappings and stress multipliers are illustrative portfolio assumptions.
 - Credit expected loss is not regulatory capital or unexpected loss.
 - Cash-flow stress scenarios are deterministic and do not assign macroeconomic probabilities.
@@ -248,8 +255,7 @@ CI runs the full quality pipeline on Python **3.10 and 3.12**.
 
 ## Roadmap
 
-- Rolling out-of-sample portfolio backtesting
-- Transaction-cost and turnover analysis
+- Rolling out-of-sample portfolio optimization
 - Shrinkage / robust covariance estimators
 - Exportable scenario and benchmark reports
 - Additional credit concentration dimensions
