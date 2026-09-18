@@ -29,9 +29,12 @@ from .credit_risk import (
 )
 from .market_data import (
     MarketRiskSummary,
+    PerformanceSummary,
+    cumulative_wealth,
     download_adjusted_close,
     historical_risk_summary,
     historical_var_expected_shortfall,
+    performance_summary,
     portfolio_return_series,
     simple_returns,
 )
@@ -67,6 +70,7 @@ __all__ = [
     "Loan",
     "LoanRiskResult",
     "MarketRiskSummary",
+    "PerformanceSummary",
     "PortfolioCreditSummary",
     "PortfolioMetrics",
     "PortfolioMonteCarloResult",
@@ -79,6 +83,7 @@ __all__ = [
     "correlated_portfolio_metrics",
     "covariance_from_correlation",
     "credit_concentration",
+    "cumulative_wealth",
     "download_adjusted_close",
     "forecast_cash_flow",
     "historical_risk_summary",
@@ -86,6 +91,7 @@ __all__ = [
     "illustrative_correlation_matrix",
     "max_sharpe_portfolio",
     "min_volatility_portfolio",
+    "performance_summary",
     "portfolio_metrics",
     "portfolio_return_series",
     "segment_stress_attribution",
