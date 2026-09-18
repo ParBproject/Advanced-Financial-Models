@@ -14,8 +14,8 @@ dependencies = ["numpy>=1.26,<3", "pandas>=2,<4"]
 
 [project.optional-dependencies]
 dev = ["ruff>=0.8"]
-dashboard = ["streamlit>=1.45,<2"]
 market-data = ["yfinance>=0.2.54,<1"]
+dashboard = ["streamlit>=1.45,<2", "yfinance>=0.2.54,<1"]
 
 [tool.setuptools]
 package-dir = {"" = "src"}
