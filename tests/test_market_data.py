@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 
 from financial_models.market_data import (
+    backtest_rebalanced_portfolio,
     cumulative_wealth,
     historical_risk_summary,
     historical_var_expected_shortfall,
@@ -71,6 +72,36 @@ class MarketDataTests(unittest.TestCase):
     def test_returns_below_negative_one_are_rejected(self) -> None:
         with self.assertRaises(ValueError):
             performance_summary([0.01, -1.01])
+
+
+    def test_daily_rebalancing_without_costs_matches_weighted_returns(self) -> None:
+        returns = simple_returns(self.prices)
+        expected = portfolio_return_series(returns, [0.6, 0.4])
+        result = backtest_rebalanced_portfolio(
+            self.prices,
+            [0.6, 0.4],
+            rebalance_every=1,
+            transaction_cost_bps=0.0,
+        )
+        self.assertTrue(np.allclose(result.returns, expected))
+        self.assertAlmostEqual(result.total_transaction_cost, 0.0)
+
+    def test_transaction_costs_reduce_backtest_wealth(self) -> None:
+        free = backtest_rebalanced_portfolio(
+            self.prices,
+            [0.5, 0.5],
+            rebalance_every=1,
+            transaction_cost_bps=0.0,
+        )
+        costly = backtest_rebalanced_portfolio(
+            self.prices,
+            [0.5, 0.5],
+            rebalance_every=1,
+            transaction_cost_bps=25.0,
+        )
+        self.assertGreater(costly.total_turnover, 0.0)
+        self.assertGreater(costly.total_transaction_cost, 0.0)
+        self.assertLess(costly.wealth.iloc[-1], free.wealth.iloc[-1])
 
 
 if __name__ == "__main__":
