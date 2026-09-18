@@ -13,6 +13,7 @@ from financial_models import (
     CreditStressScenario,
     Loan,
     approximate_efficient_frontier,
+    backtest_rebalanced_portfolio,
     correlated_portfolio_metrics,
     covariance_from_correlation,
     cumulative_wealth,
@@ -307,6 +308,21 @@ def render_market_risk() -> None:
         start_date = c3.date_input("Start date", value=date(2021, 1, 1))
         end_date = c4.date_input("End date", value=date.today())
         benchmark_text = c5.text_input("Benchmark ticker", value="SPY")
+        c6, c7 = st.columns(2)
+        rebalance_every = c6.number_input(
+            "Rebalance every (trading days)",
+            min_value=1,
+            max_value=252,
+            value=21,
+            step=1,
+        )
+        transaction_cost_bps = c7.number_input(
+            "Transaction cost (basis points)",
+            min_value=0.0,
+            max_value=100.0,
+            value=5.0,
+            step=1.0,
+        )
         submitted = st.form_submit_button("Run historical analysis")
 
     if not submitted:
@@ -356,10 +372,14 @@ def render_market_risk() -> None:
             raise ValueError(f"missing downloaded prices for: {', '.join(missing)}")
 
         portfolio_prices = prices.loc[:, list(symbols)]
-        returns = simple_returns(portfolio_prices)
         market_summary = historical_risk_summary(portfolio_prices)
-        portfolio_returns = portfolio_return_series(returns, weights)
-        portfolio_summary = performance_summary(portfolio_returns)
+        backtest = backtest_rebalanced_portfolio(
+            portfolio_prices,
+            weights,
+            rebalance_every=int(rebalance_every),
+            transaction_cost_bps=float(transaction_cost_bps),
+        )
+        portfolio_returns = backtest.returns
 
         benchmark_prices = prices[[benchmark]]
         benchmark_returns = simple_returns(benchmark_prices)[benchmark]
@@ -382,6 +402,12 @@ def render_market_risk() -> None:
     m4.metric("Sortino", f"{portfolio_summary.sortino_ratio:.2f}")
     m5.metric("Max drawdown", percent(portfolio_summary.max_drawdown))
     m6.metric("95% Expected Shortfall", percent(portfolio_summary.expected_shortfall))
+    st.caption(
+        f"Rebalanced every {int(rebalance_every)} trading days | "
+        f"transaction cost: {float(transaction_cost_bps):.1f} bps | "
+        f"cumulative turnover: {backtest.total_turnover:.2f}x | "
+        f"modeled costs: {backtest.total_transaction_cost:.2%} of initial capital"
+    )
 
     asset_statistics = pd.DataFrame(
         {
