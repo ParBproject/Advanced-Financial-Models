@@ -35,9 +35,61 @@ from financial_models import (
 
 
 st.set_page_config(
-    page_title="Advanced Financial Models",
-    page_icon="📊",
+    page_title="Financial Risk & Modeling Lab",
+    page_icon="◈",
     layout="wide",
+)
+
+st.markdown(
+    """
+    <style>
+    .stApp { background: #F8FAFC; }
+    .block-container {
+        max-width: 1480px;
+        padding-top: 1.35rem;
+        padding-bottom: 3rem;
+    }
+    .hero {
+        padding: 2rem 2.2rem;
+        border-radius: 22px;
+        background:
+            radial-gradient(circle at 88% 10%, rgba(56,189,248,.22), transparent 30%),
+            linear-gradient(135deg, #0F172A 0%, #172554 58%, #0F766E 130%);
+        color: white;
+        box-shadow: 0 18px 50px rgba(15,23,42,.15);
+        margin-bottom: 1.1rem;
+    }
+    .hero small {
+        color: #99F6E4;
+        text-transform: uppercase;
+        letter-spacing: .15em;
+        font-weight: 750;
+    }
+    .hero h1 {
+        margin: .45rem 0 0;
+        font-size: 2.28rem;
+        letter-spacing: -.035em;
+    }
+    .hero p {
+        margin: .75rem 0 0;
+        max-width: 920px;
+        color: #DCE7F4;
+        line-height: 1.62;
+    }
+    div[data-testid="stMetric"] {
+        background: white;
+        border: 1px solid #E2E8F0;
+        border-radius: 15px;
+        padding: .85rem 1rem;
+        box-shadow: 0 4px 14px rgba(15,23,42,.035);
+    }
+    section[data-testid="stSidebar"] {
+        background: #F1F5F9;
+        border-right: 1px solid #E2E8F0;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
 )
 
 
@@ -677,10 +729,19 @@ def render_stress() -> None:
         st.bar_chart(histogram)
 
 
-st.title("Advanced Financial Models")
-st.caption(
-    "Real-market risk analytics, portfolio modeling, credit risk, "
-    "liquidity forecasting, and Monte Carlo simulation"
+st.markdown(
+    """
+    <div class="hero">
+      <small>Quantitative Finance & Decision Analytics</small>
+      <h1>Financial Risk & Modeling Lab</h1>
+      <p>
+        Real-market portfolio analytics, liquidity forecasting, credit-risk
+        modeling, downside-risk measurement, stress testing, and Monte Carlo
+        simulation in one tested decision-support environment.
+      </p>
+    </div>
+    """,
+    unsafe_allow_html=True,
 )
 
 (
@@ -692,12 +753,12 @@ st.caption(
     stress_tab,
 ) = st.tabs(
     [
-        "Overview",
-        "Cash Flow",
+        "Executive Overview",
+        "Liquidity",
         "Credit Risk",
         "Market Risk",
-        "Portfolio",
-        "Stress & Monte Carlo",
+        "Portfolio Research",
+        "Stress Lab",
     ]
 )
 
