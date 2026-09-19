@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import date
+
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -11,12 +13,18 @@ from financial_models import (
     CreditStressScenario,
     Loan,
     approximate_efficient_frontier,
+    backtest_rebalanced_portfolio,
     correlated_portfolio_metrics,
     covariance_from_correlation,
+    cumulative_wealth,
+    download_adjusted_close,
     forecast_cash_flow,
+    historical_risk_summary,
     illustrative_correlation_matrix,
     max_sharpe_portfolio,
     min_volatility_portfolio,
+    performance_summary,
+    simple_returns,
     simulate_long_only_portfolios,
     simulate_portfolio_terminal_values,
     stress_cash_flow,
@@ -27,9 +35,61 @@ from financial_models import (
 
 
 st.set_page_config(
-    page_title="Advanced Financial Models",
-    page_icon="📊",
+    page_title="Financial Risk & Modeling Lab",
+    page_icon="◈",
     layout="wide",
+)
+
+st.markdown(
+    """
+    <style>
+    .stApp { background: #F8FAFC; }
+    .block-container {
+        max-width: 1480px;
+        padding-top: 1.35rem;
+        padding-bottom: 3rem;
+    }
+    .hero {
+        padding: 2rem 2.2rem;
+        border-radius: 22px;
+        background:
+            radial-gradient(circle at 88% 10%, rgba(56,189,248,.22), transparent 30%),
+            linear-gradient(135deg, #0F172A 0%, #172554 58%, #0F766E 130%);
+        color: white;
+        box-shadow: 0 18px 50px rgba(15,23,42,.15);
+        margin-bottom: 1.1rem;
+    }
+    .hero small {
+        color: #99F6E4;
+        text-transform: uppercase;
+        letter-spacing: .15em;
+        font-weight: 750;
+    }
+    .hero h1 {
+        margin: .45rem 0 0;
+        font-size: 2.28rem;
+        letter-spacing: -.035em;
+    }
+    .hero p {
+        margin: .75rem 0 0;
+        max-width: 920px;
+        color: #DCE7F4;
+        line-height: 1.62;
+    }
+    div[data-testid="stMetric"] {
+        background: white;
+        border: 1px solid #E2E8F0;
+        border-radius: 15px;
+        padding: .85rem 1rem;
+        box-shadow: 0 4px 14px rgba(15,23,42,.035);
+    }
+    section[data-testid="stSidebar"] {
+        background: #F1F5F9;
+        border-right: 1px solid #E2E8F0;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
 )
 
 
@@ -41,12 +101,36 @@ def percent(value: float) -> str:
     return f"{value:.2%}"
 
 
+@st.cache_data(ttl=3600, show_spinner=False)
+def load_market_prices(
+    tickers: tuple[str, ...],
+    start: str,
+    end: str,
+) -> pd.DataFrame:
+    return download_adjusted_close(tickers, start=start, end=end)
+
+
 def default_loans_frame() -> pd.DataFrame:
     return pd.DataFrame(
         [
-            {"Loan ID": "L-001", "Borrower": "Strong Co.", "Exposure": 100_000.0, "Credit Score": 780},
-            {"Loan ID": "L-002", "Borrower": "Mid Market", "Exposure": 150_000.0, "Credit Score": 620},
-            {"Loan ID": "L-003", "Borrower": "Growth Co.", "Exposure": 200_000.0, "Credit Score": 540},
+            {
+                "Loan ID": "L-001",
+                "Borrower": "Strong Co.",
+                "Exposure": 100_000.0,
+                "Credit Score": 780,
+            },
+            {
+                "Loan ID": "L-002",
+                "Borrower": "Mid Market",
+                "Exposure": 150_000.0,
+                "Credit Score": 620,
+            },
+            {
+                "Loan ID": "L-003",
+                "Borrower": "Growth Co.",
+                "Exposure": 200_000.0,
+                "Credit Score": 540,
+            },
         ]
     )
 
@@ -138,8 +222,8 @@ def render_overview() -> None:
     col4.metric("Covariance-aware volatility", percent(portfolio.volatility))
 
     st.markdown(
-        "This dashboard uses the same tested Python models as the repository. "
-        "Change assumptions in the tabs below to compare liquidity, credit, and portfolio risk."
+        "This dashboard combines tested financial models with real-market analytics. "
+        "Use the tabs below to inspect liquidity, credit, market, portfolio, and stress risk."
     )
 
     overview = pd.DataFrame(
@@ -164,8 +248,18 @@ def render_overview() -> None:
 def render_cash_flow() -> None:
     st.subheader("Cash-flow forecast")
     c1, c2, c3, c4 = st.columns(4)
-    starting_cash = c1.number_input("Starting cash", min_value=0.0, value=50_000.0, step=5_000.0)
-    revenue = c2.number_input("Month 1 revenue", min_value=0.0, value=100_000.0, step=5_000.0)
+    starting_cash = c1.number_input(
+        "Starting cash",
+        min_value=0.0,
+        value=50_000.0,
+        step=5_000.0,
+    )
+    revenue = c2.number_input(
+        "Month 1 revenue",
+        min_value=0.0,
+        value=100_000.0,
+        step=5_000.0,
+    )
     growth = c3.slider("Monthly revenue growth", -10.0, 15.0, 5.0, 0.5) / 100.0
     opex = c4.slider("Operating expense ratio", 0.0, 100.0, 60.0, 1.0) / 100.0
 
@@ -200,7 +294,11 @@ def render_credit() -> None:
         num_rows="fixed",
         column_config={
             "Exposure": st.column_config.NumberColumn(min_value=0.0, format="$%.0f"),
-            "Credit Score": st.column_config.NumberColumn(min_value=300, max_value=850, step=1),
+            "Credit Score": st.column_config.NumberColumn(
+                min_value=300,
+                max_value=850,
+                step=1,
+            ),
         },
         key="credit_editor",
     )
@@ -246,9 +344,199 @@ def render_credit() -> None:
     )
 
 
+def render_market_risk() -> None:
+    st.subheader("Real-market risk & performance")
+    st.caption(
+        "Download historical adjusted prices, estimate return/covariance risk, "
+        "and compare a portfolio with a selected benchmark."
+    )
+
+    with st.form("market_risk_form"):
+        c1, c2 = st.columns(2)
+        tickers_text = c1.text_input("Tickers", value="SPY, QQQ, TLT, GLD")
+        weights_text = c2.text_input("Weights (%)", value="25, 25, 25, 25")
+        c3, c4, c5 = st.columns(3)
+        start_date = c3.date_input("Start date", value=date(2021, 1, 1))
+        end_date = c4.date_input("End date", value=date.today())
+        benchmark_text = c5.text_input("Benchmark ticker", value="SPY")
+        c6, c7 = st.columns(2)
+        rebalance_every = c6.number_input(
+            "Rebalance every (trading days)",
+            min_value=1,
+            max_value=252,
+            value=21,
+            step=1,
+        )
+        transaction_cost_bps = c7.number_input(
+            "Transaction cost (basis points)",
+            min_value=0.0,
+            max_value=100.0,
+            value=5.0,
+            step=1.0,
+        )
+        submitted = st.form_submit_button("Run historical analysis")
+
+    if not submitted:
+        st.info("Run the analysis to load historical market data and portfolio risk metrics.")
+        return
+
+    symbols = tuple(
+        symbol.strip().upper()
+        for symbol in tickers_text.split(",")
+        if symbol.strip()
+    )
+    benchmark = benchmark_text.strip().upper()
+    try:
+        weights = np.asarray(
+            [float(value.strip()) for value in weights_text.split(",")],
+            dtype=float,
+        )
+    except ValueError:
+        st.error("Weights must be comma-separated numbers.")
+        return
+
+    if not symbols:
+        st.error("Enter at least one ticker.")
+        return
+    if len(weights) != len(symbols):
+        st.error("Provide one weight for each ticker.")
+        return
+    if np.any(weights < 0) or float(weights.sum()) <= 0:
+        st.error("Weights must be non-negative with a positive total.")
+        return
+    if start_date >= end_date:
+        st.error("Start date must be earlier than end date.")
+        return
+
+    weights = weights / weights.sum()
+    request_symbols = tuple(dict.fromkeys((*symbols, benchmark)))
+
+    try:
+        with st.spinner("Loading historical market data..."):
+            prices = load_market_prices(
+                request_symbols,
+                start_date.isoformat(),
+                end_date.isoformat(),
+            )
+        missing = [symbol for symbol in request_symbols if symbol not in prices.columns]
+        if missing:
+            raise ValueError(f"missing downloaded prices for: {', '.join(missing)}")
+
+        portfolio_prices = prices.loc[:, list(symbols)]
+        market_summary = historical_risk_summary(portfolio_prices)
+        backtest = backtest_rebalanced_portfolio(
+            portfolio_prices,
+            weights,
+            rebalance_every=int(rebalance_every),
+            transaction_cost_bps=float(transaction_cost_bps),
+        )
+        portfolio_returns = backtest.returns
+
+        benchmark_prices = prices[[benchmark]]
+        benchmark_returns = simple_returns(benchmark_prices)[benchmark]
+        aligned = pd.concat(
+            [portfolio_returns, benchmark_returns.rename("benchmark_return")],
+            axis=1,
+            join="inner",
+        ).dropna()
+        portfolio_summary = performance_summary(aligned["portfolio_return"])
+        benchmark_summary = performance_summary(aligned["benchmark_return"])
+    except (ImportError, TypeError, ValueError) as exc:
+        st.error(str(exc))
+        st.caption('Install market-data support with: pip install -e ".[dashboard,market-data]"')
+        return
+
+    m1, m2, m3, m4, m5, m6 = st.columns(6)
+    m1.metric("Portfolio CAGR", percent(portfolio_summary.cagr))
+    m2.metric("Volatility", percent(portfolio_summary.annualized_volatility))
+    m3.metric("Sharpe", f"{portfolio_summary.sharpe_ratio:.2f}")
+    m4.metric("Sortino", f"{portfolio_summary.sortino_ratio:.2f}")
+    m5.metric("Max drawdown", percent(portfolio_summary.max_drawdown))
+    m6.metric("95% Expected Shortfall", percent(portfolio_summary.expected_shortfall))
+    st.caption(
+        f"Rebalanced every {int(rebalance_every)} trading days | "
+        f"transaction cost: {float(transaction_cost_bps):.1f} bps | "
+        f"cumulative turnover: {backtest.total_turnover:.2f}x | "
+        f"modeled costs: {backtest.total_transaction_cost:.2%} of initial capital"
+    )
+
+    asset_statistics = pd.DataFrame(
+        {
+            "Annualized Return": market_summary.annualized_returns,
+            "Annualized Volatility": market_summary.annualized_volatility,
+            "Maximum Drawdown": market_summary.max_drawdown,
+            "Weight": pd.Series(weights, index=symbols),
+        }
+    )
+    st.markdown("### Asset-level statistics")
+    st.dataframe(
+        asset_statistics.style.format("{:.2%}"),
+        use_container_width=True,
+    )
+
+    wealth = pd.DataFrame(
+        {
+            "Portfolio": cumulative_wealth(aligned["portfolio_return"]),
+            benchmark: cumulative_wealth(aligned["benchmark_return"]),
+        },
+        index=aligned.index,
+    )
+    st.markdown("### Portfolio vs benchmark")
+    st.line_chart(wealth)
+
+    comparison = pd.DataFrame(
+        {
+            "Metric": [
+                "Cumulative return",
+                "CAGR",
+                "Annualized volatility",
+                "Sharpe ratio",
+                "Sortino ratio",
+                "Maximum drawdown",
+                "95% historical VaR",
+                "95% Expected Shortfall",
+            ],
+            "Portfolio": [
+                percent(portfolio_summary.cumulative_return),
+                percent(portfolio_summary.cagr),
+                percent(portfolio_summary.annualized_volatility),
+                f"{portfolio_summary.sharpe_ratio:.2f}",
+                f"{portfolio_summary.sortino_ratio:.2f}",
+                percent(portfolio_summary.max_drawdown),
+                percent(portfolio_summary.value_at_risk),
+                percent(portfolio_summary.expected_shortfall),
+            ],
+            benchmark: [
+                percent(benchmark_summary.cumulative_return),
+                percent(benchmark_summary.cagr),
+                percent(benchmark_summary.annualized_volatility),
+                f"{benchmark_summary.sharpe_ratio:.2f}",
+                f"{benchmark_summary.sortino_ratio:.2f}",
+                percent(benchmark_summary.max_drawdown),
+                percent(benchmark_summary.value_at_risk),
+                percent(benchmark_summary.expected_shortfall),
+            ],
+        }
+    )
+    st.dataframe(
+        comparison,
+        hide_index=True,
+        use_container_width=True,
+    )
+
+    st.markdown("### Correlation matrix")
+    st.dataframe(
+        market_summary.correlation.style.format("{:.2f}"),
+        use_container_width=True,
+    )
+
+
 def render_portfolio() -> None:
     st.subheader("Covariance-aware portfolio analytics")
-    st.caption("Edit expected returns, volatility, or weights. Weights are normalized to 100% for analysis.")
+    st.caption(
+        "Edit expected returns, volatility, or weights. "
+        "Weights are normalized to 100% for analysis."
+    )
     edited = st.data_editor(
         baseline_portfolio_frame(),
         hide_index=True,
@@ -338,10 +626,34 @@ def render_stress() -> None:
 
     with left:
         st.markdown("### Liquidity stress")
-        revenue_multiplier = st.slider("Revenue level", 50.0, 120.0, 80.0, 5.0) / 100.0
-        growth_delta = st.slider("Monthly growth shock", -10.0, 5.0, -3.0, 0.5) / 100.0
-        opex_delta = st.slider("OpEx ratio shock", -10.0, 30.0, 10.0, 1.0) / 100.0
-        fixed_multiplier = st.slider("Fixed-cost multiplier", 80.0, 150.0, 110.0, 5.0) / 100.0
+        revenue_multiplier = st.slider(
+            "Revenue level",
+            50.0,
+            120.0,
+            80.0,
+            5.0,
+        ) / 100.0
+        growth_delta = st.slider(
+            "Monthly growth shock",
+            -10.0,
+            5.0,
+            -3.0,
+            0.5,
+        ) / 100.0
+        opex_delta = st.slider(
+            "OpEx ratio shock",
+            -10.0,
+            30.0,
+            10.0,
+            1.0,
+        ) / 100.0
+        fixed_multiplier = st.slider(
+            "Fixed-cost multiplier",
+            80.0,
+            150.0,
+            110.0,
+            5.0,
+        ) / 100.0
 
         try:
             cash_stress = stress_cash_flow(
@@ -380,7 +692,13 @@ def render_stress() -> None:
     with right:
         st.markdown("### Portfolio Monte Carlo")
         horizon = st.slider("Horizon (years)", 1, 30, 10)
-        simulations = st.slider("Monte Carlo paths", 1_000, 25_000, 10_000, 1_000)
+        simulations = st.slider(
+            "Monte Carlo paths",
+            1_000,
+            25_000,
+            10_000,
+            1_000,
+        )
         assets = workbook_balanced_portfolio()
         covariance = covariance_from_correlation(
             [asset.volatility for asset in assets],
@@ -411,11 +729,37 @@ def render_stress() -> None:
         st.bar_chart(histogram)
 
 
-st.title("Advanced Financial Models")
-st.caption("Excel-backed financial modeling with reproducible Python analytics")
+st.markdown(
+    """
+    <div class="hero">
+      <small>Quantitative Finance & Decision Analytics</small>
+      <h1>Financial Risk & Modeling Lab</h1>
+      <p>
+        Real-market portfolio analytics, liquidity forecasting, credit-risk
+        modeling, downside-risk measurement, stress testing, and Monte Carlo
+        simulation in one tested decision-support environment.
+      </p>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
-overview_tab, cash_tab, credit_tab, portfolio_tab, stress_tab = st.tabs(
-    ["Overview", "Cash Flow", "Credit Risk", "Portfolio", "Stress & Monte Carlo"]
+(
+    overview_tab,
+    cash_tab,
+    credit_tab,
+    market_tab,
+    portfolio_tab,
+    stress_tab,
+) = st.tabs(
+    [
+        "Executive Overview",
+        "Liquidity",
+        "Credit Risk",
+        "Market Risk",
+        "Portfolio Research",
+        "Stress Lab",
+    ]
 )
 
 with overview_tab:
@@ -424,6 +768,8 @@ with cash_tab:
     render_cash_flow()
 with credit_tab:
     render_credit()
+with market_tab:
+    render_market_risk()
 with portfolio_tab:
     render_portfolio()
 with stress_tab:
@@ -431,5 +777,6 @@ with stress_tab:
 
 st.divider()
 st.caption(
-    "Educational portfolio project only — not investment, lending, accounting, or financial advice."
+    "Educational portfolio project only — not investment, lending, accounting, "
+    "or financial advice."
 )
