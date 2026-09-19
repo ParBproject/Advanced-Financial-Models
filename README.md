@@ -27,6 +27,23 @@ The repository is designed to demonstrate both **Quantitative Specialist** and *
 
 ## Real-market analytics workflow
 
+### System architecture
+
+```mermaid
+flowchart LR
+    A[Historical Market Data] --> B[Return & Covariance Analytics]
+    B --> C[Portfolio Risk]
+    C --> D[Backtest + Costs]
+    D --> E[Benchmark & Downside Metrics]
+    F[Cash-Flow Assumptions] --> G[Liquidity Forecast & Stress]
+    H[Loan Portfolio] --> I[Expected Loss & Concentration]
+    I --> J[Credit Stress]
+    E --> K[Streamlit Decision Lab]
+    G --> K
+    J --> K
+```
+
+
 The market-risk layer makes the data provenance and calculation path explicit:
 
 ```text
