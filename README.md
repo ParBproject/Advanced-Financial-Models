@@ -242,6 +242,21 @@ CI runs the full quality pipeline on Python **3.10 and 3.12**.
 
 **Business communication:** Excel modeling, executive KPIs, interactive dashboarding, explicit assumptions and limitations.
 
+## Related portfolio projects
+
+This repository is the broad financial-modeling flagship. The following projects provide deeper evidence in specific quantitative and analytics areas:
+
+| Project | Focus |
+|---|---|
+| [Portfolio Optimizer](https://github.com/ParBproject/Portfolio-Optimizer) | Walk-forward portfolio optimization, covariance shrinkage, transaction costs, turnover, efficient frontiers |
+| [Stock Price Predictor](https://github.com/ParBproject/stock-price-predictor) | LSTM / Random Forest forecasting, naïve baselines, leakage controls, return-space evaluation |
+| [AI Investment Dashboard](https://github.com/ParBproject/AI-Investment-Dashboard) | Black–Scholes, Greeks, implied volatility, binomial trees, Monte Carlo option pricing |
+| [Commodity Price Forecaster](https://github.com/ParBproject/commodity-price-forecaster) | ARIMA / Prophet forecasting, rolling-origin baselines, MASE, weather context |
+| [Credit Risk Analytics](https://github.com/ParBproject/Portfolio-Risk-Analysis-Credit-Risk-Modeling) | PD validation, calibration, expected loss, concentration, stress testing |
+| [Fulfillment Operations Analytics](https://github.com/ParBproject/E-commerce-Order-Fulfillment-Process-Improvement) | SQL, DuckDB, KPI governance, Pareto analysis, data quality, executive dashboarding |
+
+Together, these repositories demonstrate a consistent workflow across domains: **data → validation → quantitative/statistical modeling → out-of-sample or stress evaluation → decision-oriented reporting → automated tests**.
+
 ## Data and model limitations
 
 - Historical market data is obtained from an external provider through `yfinance`; availability and revisions are provider-dependent.
