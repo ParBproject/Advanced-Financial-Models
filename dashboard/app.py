@@ -251,11 +251,14 @@ def render_credit() -> None:
     )
 
     st.markdown(format_credit_book_decision(summary, concentration, audit))
+    stress_income = audit.combined_stress_net_income
+    stress_income_text = (
+        f"-${abs(stress_income):,.2f}" if stress_income < 0 else f"${stress_income:,.2f}"
+    )
     st.caption(
         "The dollar figures in the retired memo are NumPy's higher 5th and 1st "
         "percentiles of per-customer Net_Income. "
-        f"Combined file stress (revenue × 0.8 − expenses × 1.1) is "
-        f"${audit.combined_stress_net_income:,.2f}. "
+        f"Combined file stress (revenue × 0.8 − expenses × 1.1) is {stress_income_text}. "
         "That income stress is not the PD/LGD expected-loss stress on the Stress tab."
     )
 
