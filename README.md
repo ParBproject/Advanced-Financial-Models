@@ -1,5 +1,13 @@
 # Advanced Financial Modeling Suite
 
+## For a data analyst application
+
+**Use this when the role is finance, FP&A, or credit.** It is the one finance dashboard to show: Excel assumptions, a tested Python core (expected loss, concentration, stress), and the Streamlit board that calls that core. Do not also lead with the separate trading dashboards.
+
+<p align="center"><img src="cash-flow-model.png" alt="Cash-flow forecast" width="100%"></p>
+<p align="center"><img src="loan-risk-model.png" alt="Credit expected-loss model" width="100%"></p>
+<p align="center"><img src="portfolio-allocation.png" alt="Portfolio allocation" width="100%"></p>
+
 [![Financial model quality](https://github.com/ParBproject/Advanced-Financial-Models/actions/workflows/ci.yml/badge.svg)](https://github.com/ParBproject/Advanced-Financial-Models/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](src/financial_models)
 [![Streamlit](https://img.shields.io/badge/Streamlit-Interactive_Dashboard-FF4B4B?logo=streamlit&logoColor=white)](dashboard/app.py)
