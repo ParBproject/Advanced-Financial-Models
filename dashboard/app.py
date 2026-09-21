@@ -13,8 +13,12 @@ from financial_models import (
     approximate_efficient_frontier,
     correlated_portfolio_metrics,
     covariance_from_correlation,
+    credit_book_memo_audit,
+    credit_concentration,
     forecast_cash_flow,
+    format_credit_book_decision,
     illustrative_correlation_matrix,
+    loans_from_credit_book,
     max_sharpe_portfolio,
     min_volatility_portfolio,
     simulate_long_only_portfolios,
@@ -42,11 +46,16 @@ def percent(value: float) -> str:
 
 
 def default_loans_frame() -> pd.DataFrame:
+    """1,000-loan credit book. Customer_ID is both the loan id and the borrower."""
     return pd.DataFrame(
         [
-            {"Loan ID": "L-001", "Borrower": "Strong Co.", "Exposure": 100_000.0, "Credit Score": 780},
-            {"Loan ID": "L-002", "Borrower": "Mid Market", "Exposure": 150_000.0, "Credit Score": 620},
-            {"Loan ID": "L-003", "Borrower": "Growth Co.", "Exposure": 200_000.0, "Credit Score": 540},
+            {
+                "Loan ID": loan.loan_id,
+                "Borrower": loan.borrower,
+                "Exposure": loan.exposure,
+                "Credit Score": loan.credit_score,
+            }
+            for loan in loans_from_credit_book()
         ]
     )
 
@@ -123,6 +132,8 @@ def render_overview() -> None:
     cash = forecast_cash_flow(CashFlowAssumptions())
     loans = loans_from_frame(default_loans_frame())
     credit = summarize_portfolio(loans)
+    concentration = credit_concentration(loans)
+    audit = credit_book_memo_audit()
     assets = workbook_balanced_portfolio()
     covariance = covariance_from_correlation(
         [asset.volatility for asset in assets],
@@ -131,15 +142,20 @@ def render_overview() -> None:
     portfolio = correlated_portfolio_metrics(assets, covariance)
 
     st.subheader("Executive snapshot")
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3, col4, col5 = st.columns(5)
     col1.metric("12-month ending cash", money(cash.periods[-1].ending_cash))
-    col2.metric("Credit expected loss", money(credit.total_expected_loss))
-    col3.metric("Portfolio expected return", percent(portfolio.expected_return))
-    col4.metric("Covariance-aware volatility", percent(portfolio.volatility))
+    col2.metric("Credit expected loss", f"${credit.total_expected_loss:,.2f}")
+    col3.metric("Borrower HHI", f"{concentration.herfindahl_hirschman_index:.6f}")
+    col4.metric("Portfolio expected return", percent(portfolio.expected_return))
+    col5.metric("Covariance-aware volatility", percent(portfolio.volatility))
 
-    st.markdown(
-        "This dashboard uses the same tested Python models as the repository. "
-        "Change assumptions in the tabs below to compare liquidity, credit, and portfolio risk."
+    st.markdown(format_credit_book_decision(credit, concentration, audit))
+    st.caption(
+        "Credit figures are the 1,000-loan book in data/portfolio_data.csv. "
+        "Expected loss uses score-band PD at 45% LGD. "
+        f"The file's own average PD_Score is {audit.average_reported_pd:.2%} "
+        f"({audit.reported_pd_above_20_count} loans above 20%). "
+        "Cash-flow and portfolio tabs still use the workbook assumptions."
     )
 
     overview = pd.DataFrame(
@@ -192,12 +208,17 @@ def render_cash_flow() -> None:
 
 def render_credit() -> None:
     st.subheader("Credit expected loss")
+    st.caption(
+        "Default rows are the 1,000-loan credit book. "
+        "Borrower is Customer_ID because the file has no separate obligor name."
+    )
     lgd = st.slider("Loss given default", 0.0, 100.0, 45.0, 1.0) / 100.0
     edited = st.data_editor(
         default_loans_frame(),
         hide_index=True,
         use_container_width=True,
         num_rows="fixed",
+        height=280,
         column_config={
             "Exposure": st.column_config.NumberColumn(min_value=0.0, format="$%.0f"),
             "Credit Score": st.column_config.NumberColumn(min_value=300, max_value=850, step=1),
@@ -208,15 +229,52 @@ def render_credit() -> None:
     try:
         loans = loans_from_frame(edited)
         summary = summarize_portfolio(loans, loss_given_default=lgd)
+        concentration = credit_concentration(loans)
+        audit = credit_book_memo_audit()
     except (TypeError, ValueError) as exc:
         st.error(str(exc))
         return
 
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Total exposure", money(summary.total_exposure))
-    c2.metric("Expected loss", money(summary.total_expected_loss))
+    c1.metric("Total exposure", f"${summary.total_exposure:,.2f}")
+    c2.metric("Expected loss", f"${summary.total_expected_loss:,.2f}")
     c3.metric("Expected-loss ratio", percent(summary.expected_loss_ratio))
-    c4.metric("Average credit score", f"{summary.average_credit_score:.0f}")
+    c4.metric("Borrower HHI", f"{concentration.herfindahl_hirschman_index:.6f}")
+
+    c5, c6, c7, c8 = st.columns(4)
+    c5.metric("Effective borrowers", f"{concentration.effective_borrower_count:.1f}")
+    c6.metric("Largest borrower", percent(concentration.largest_borrower_share))
+    c7.metric("Average credit score", f"{summary.average_credit_score:.0f}")
+    c8.metric(
+        "High-risk loans",
+        f"{summary.high_risk_count}",
+    )
+
+    st.markdown(format_credit_book_decision(summary, concentration, audit))
+    st.caption(
+        "The dollar figures in the retired memo are NumPy's higher 5th and 1st "
+        "percentiles of per-customer Net_Income. "
+        f"Combined file stress (revenue × 0.8 − expenses × 1.1) is "
+        f"${audit.combined_stress_net_income:,.2f}. "
+        "That income stress is not the PD/LGD expected-loss stress on the Stress tab."
+    )
+
+    ratings = pd.DataFrame(
+        [
+            {
+                "Risk rating": group.name,
+                "Exposure": group.exposure,
+                "Share": group.share,
+            }
+            for group in concentration.risk_rating_exposures
+        ]
+    )
+    st.markdown("**Exposure by risk rating**")
+    st.dataframe(
+        ratings.style.format({"Exposure": "${:,.2f}", "Share": "{:.2%}"}),
+        hide_index=True,
+        use_container_width=True,
+    )
 
     rows = pd.DataFrame(
         [
@@ -243,6 +301,7 @@ def render_credit() -> None:
         ),
         hide_index=True,
         use_container_width=True,
+        height=360,
     )
 
 
@@ -360,6 +419,7 @@ def render_stress() -> None:
             st.error(str(exc))
 
         st.markdown("### Credit stress")
+        st.caption("PD and LGD multipliers apply to the 1,000-loan book.")
         pd_multiplier = st.slider("PD multiplier", 0.5, 4.0, 1.75, 0.25)
         lgd_multiplier = st.slider("LGD multiplier", 0.5, 2.5, 1.25, 0.25)
         credit_stress = stress_credit_portfolio(

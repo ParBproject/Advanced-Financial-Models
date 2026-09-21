@@ -27,6 +27,13 @@ from .credit_risk import (
     assess_loan,
     summarize_portfolio,
 )
+from .loan_book import (
+    CreditBookMemoAudit,
+    credit_book_csv_path,
+    credit_book_memo_audit,
+    format_credit_book_decision,
+    loans_from_credit_book,
+)
 from .portfolio import (
     AssetAllocation,
     PortfolioMetrics,
@@ -52,6 +59,7 @@ __all__ = [
     "CashFlowPeriod",
     "CashFlowStressResult",
     "CashFlowStressScenario",
+    "CreditBookMemoAudit",
     "CreditConcentrationSummary",
     "CreditStressResult",
     "CreditStressScenario",
@@ -69,9 +77,13 @@ __all__ = [
     "assess_loan",
     "correlated_portfolio_metrics",
     "covariance_from_correlation",
+    "credit_book_csv_path",
+    "credit_book_memo_audit",
     "credit_concentration",
     "forecast_cash_flow",
+    "format_credit_book_decision",
     "illustrative_correlation_matrix",
+    "loans_from_credit_book",
     "max_sharpe_portfolio",
     "min_volatility_portfolio",
     "portfolio_metrics",
