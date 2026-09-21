@@ -2,7 +2,7 @@
 
 ## For a data analyst application
 
-**Use this when the role is finance, FP&A, or credit.** It is the one finance dashboard to show: Excel assumptions, a tested Python core (expected loss, concentration, stress), and the Streamlit board that calls that core. Do not also lead with the separate trading dashboards.
+**Use this when the role is finance, FP&A, or credit.** It is the one finance dashboard to show: Excel assumptions, a tested Python core (expected loss, concentration, stress), and the Streamlit board that calls that core. The board defaults to the 1,000-loan credit book in `data/portfolio_data.csv`. Do not also lead with the separate trading dashboards.
 
 <p align="center"><img src="cash-flow-model.png" alt="Cash-flow forecast" width="100%"></p>
 <p align="center"><img src="loan-risk-model.png" alt="Credit expected-loss model" width="100%"></p>
@@ -36,7 +36,7 @@ A portfolio-grade financial analytics project combining an executive-ready Excel
 |---|---|---:|---:|---:|
 | Cash-flow forecast | Liquidity planning and funding needs | ✅ | ✅ | ✅ |
 | Credit expected loss | Loan monitoring and portfolio loss estimation | ✅ | ✅ | ✅ |
-| Credit concentration | Borrower concentration and diversification risk | — | ✅ | — |
+| Credit concentration | Borrower concentration and diversification risk | — | ✅ | ✅ |
 | Segment stress attribution | Sources of stressed expected-loss change | — | ✅ | — |
 | Baseline portfolio allocation | Workbook-comparable risk/return analysis | ✅ | ✅ | ✅ |
 | Covariance-aware portfolio analytics | Diversification and frontier analysis | — | ✅ | ✅ |
@@ -53,6 +53,8 @@ streamlit run dashboard/app.py
 ```
 
 The dashboard includes executive KPIs, editable cash-flow assumptions, loan expected-loss analysis, covariance-aware portfolio simulation/frontier views, liquidity/credit stress controls, and Monte Carlo terminal-value distributions.
+
+The credit tab and the overview open on the committed 1,000-loan book. Cash-flow and market-portfolio tabs still use the workbook assumptions. Expected loss and borrower HHI on the credit book come from `summarize_portfolio()` and `credit_concentration()`.
 
 ## 1. Cash-Flow Forecast
 
@@ -72,7 +74,36 @@ The credit model maps FICO-style score bands to probability of default, applies 
 
 > **Expected Loss = EAD × PD × LGD**
 
-The reproducible core aggregates portfolio exposure, expected loss, expected-loss ratio, average score, and Low/Medium/High risk counts.
+The reproducible core aggregates portfolio exposure, expected loss, expected-loss ratio, average score, and Low/Medium/High risk counts. The single-loan formula check in the tests ($100,000 × 15% PD × 45% LGD = $6,750) is not the book on the dashboard.
+
+### Default book
+
+`data/portfolio_data.csv` is a copy of the loan file in [ParBproject/portfolio-risk-analysis-credit-risk-modeling](https://github.com/ParBproject/portfolio-risk-analysis-credit-risk-modeling). That repository is the original source. The adapter in `loan_book.py` maps columns as follows:
+
+| CSV column | Loan field |
+|---|---|
+| `Customer_ID` | `loan_id` and `borrower` (the file has no obligor name) |
+| `Loan_Amount` | `exposure` |
+| `Credit_Score` | `credit_score` |
+
+`PD_Score` stays on the file. Expected loss uses the score-band PD above, at the library's 45% LGD. Headline results pinned by the tests:
+
+| Metric | Value |
+|---|---:|
+| Loans | 1,000 |
+| Total exposure | $68,121,079.07 |
+| Expected loss | $1,946,680.74 |
+| Borrower HHI | 0.00130766 |
+| Effective borrowers | 764.7 |
+
+The file's own average `PD_Score` is 29.80%, and 504 loans have `PD_Score` above 20%. A 20% revenue cut and a 10% expense increase together produce −$12,559,240.00 of net income. Those file facts are not expected-loss outputs.
+
+The credit repository's Word memo is retired. Two of its lines do not survive the file:
+
+- $43,146.55 and $25,890.70 are NumPy's higher 5th and 1st percentiles of per-customer `Net_Income`. They are positive income levels, not a portfolio loss VaR.
+- Operational-risk score above 60 does not show a 2.5× default rate. The default rate is 29.67% (27 of 91) above 60 and 29.81% (271 of 909) at or below 60.
+
+The overview and credit tab print that decision in one line.
 
 ### Stress testing
 
@@ -133,9 +164,11 @@ Advanced-Financial-Models/
 │   ├── cash_flow.py                      # 12-month liquidity forecast
 │   ├── credit_risk.py                    # PD/LGD/EAD expected-loss model
 │   ├── credit_concentration.py           # HHI, top-N and stress attribution
+│   ├── loan_book.py                      # CSV adapter for the 1,000-loan book
 │   ├── portfolio.py                      # Excel-comparable baseline allocation
 │   ├── advanced_portfolio.py             # Covariance, simulation, frontier
 │   └── stress_testing.py                 # Stress scenarios + Monte Carlo
+├── data/portfolio_data.csv               # Committed copy of the credit-repo loan file
 ├── examples/
 │   ├── basic_analysis.py
 │   ├── efficient_frontier.py
@@ -184,7 +217,8 @@ ruff check src tests examples dashboard
 The automated suite pins important behavior, including:
 
 - Month 1 cash flow: **$100,000 revenue − 60% OpEx − $8,000 rent − $5,000 loan = $27,000 net cash flow**
-- Credit example: **$100,000 exposure × 15% PD × 45% LGD = $6,750 expected loss**
+- Credit formula check: **$100,000 exposure × 15% PD × 45% LGD = $6,750 expected loss**
+- 1,000-loan book: **1,000 loans, $68,121,079.07 exposure, $1,946,680.74 expected loss** at 45% LGD, borrower HHI **0.00130766**
 - hand-calculated borrower concentration where HHI = **0.375** and top-2 share = **75%**
 - segment stress contributions reconciling exactly to total stressed portfolio loss
 - baseline allocation weights/return calculation
