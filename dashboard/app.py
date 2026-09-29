@@ -67,6 +67,11 @@ def money(value: float, *, decimals: int = 0) -> str:
     return f"${value:,.{decimals}f}"
 
 
+def prose(text: str) -> str:
+    """Keep currency signs as text. Streamlit markdown treats $...$ as LaTeX."""
+    return text.replace("$", r"\$")
+
+
 def percent(value: float) -> str:
     return f"{value:.2%}"
 
@@ -134,7 +139,10 @@ def render_header() -> None:
     st.title("Advanced Financial Models")
     st.markdown('<div class="afm-rule"></div>', unsafe_allow_html=True)
     st.caption(
-        "The board calls the tested package. It does not keep a second copy of the formulas."
+        prose(
+            "Cash-flow forecasting, credit expected loss and portfolio risk "
+            "on one tested Python engine."
+        )
     )
 
 
@@ -157,12 +165,14 @@ def render_overview() -> None:
     columns[2].metric("Borrower HHI", f"{concentration.herfindahl_hirschman_index:.6f}")
     columns[3].metric("Covariance-aware volatility", percent(portfolio.volatility))
 
-    st.markdown(format_credit_book_decision(credit, concentration, audit))
+    st.markdown(prose(format_credit_book_decision(credit, concentration, audit)))
     show(cash_flow_plotly(cash), key="overview-cash")
     st.caption(
-        "Cash flow uses the workbook assumptions. Credit uses the 1,000-loan book at a 45% LGD "
-        "and the score-band PD, not the file's PD_Score column. "
-        f"That column averages {audit.average_reported_pd:.2%}."
+        prose(
+            "The cash forecast uses the workbook assumptions. Expected loss uses a 45% loss given "
+            "default and the score-band default rate. The file's reported probability of default "
+            f"averages {audit.average_reported_pd:.2%} and is not the rate in that calculation."
+        )
     )
 
 
@@ -186,7 +196,9 @@ def render_cash_flow() -> None:
     metrics[2].metric("Minimum cash", money(forecast.minimum_cash_balance))
     metrics[3].metric("Average monthly net cash flow", money(forecast.average_monthly_net_cash_flow))
     show(cash_flow_plotly(forecast), key="cash-flow-chart")
-    st.caption("NPV discounts each month at the effective monthly rate from the 10% annual assumption.")
+    st.caption(
+        prose("NPV discounts each month at the effective monthly rate from the 10% annual assumption.")
+    )
     frame = pd.DataFrame(
         {
             "Month": [period.month for period in forecast.periods],
@@ -210,8 +222,10 @@ def render_cash_flow() -> None:
 def render_credit() -> None:
     st.subheader("Credit book")
     st.caption(
-        "1,000 loans from data/portfolio_data.csv. Borrower is Customer_ID. "
-        "Expected loss uses the score-band PD."
+        prose(
+            "1,000 loans. Expected loss uses the score-band probability of default, "
+            "not the probability stored on each row."
+        )
     )
     loss_given_default = st.slider("Loss given default", 0.0, 100.0, 45.0, 1.0) / 100.0
     loans = loans_from_credit_book()
@@ -237,7 +251,7 @@ def render_credit() -> None:
         money(checked.expected_loss, decimals=2),
         help="100,000 exposure times the 15% band PD times the selected LGD.",
     )
-    st.markdown(format_credit_book_decision(summary, concentration, audit))
+    st.markdown(prose(format_credit_book_decision(summary, concentration, audit)))
     show(credit_ratings_plotly(summary, concentration), key="credit-ratings")
     rows = pd.DataFrame(
         [
@@ -270,9 +284,11 @@ def render_credit() -> None:
 def render_portfolio() -> None:
     st.subheader("Portfolio")
     st.caption(
-        "The correlation matrix is the bundled one-factor illustration for these six sleeves. "
-        "It is not an estimate from market history. Weights that do not sum to 100% are rescaled, "
-        "and the rescale is shown below."
+        prose(
+            "The correlation matrix is a one-factor illustration for these six sleeves. "
+            "It is not an estimate from market history. Weights that do not sum to 100% are rescaled, "
+            "and the rescale is shown below."
+        )
     )
     edited = st.data_editor(
         portfolio_frame(),
@@ -284,7 +300,9 @@ def render_portfolio() -> None:
     n_portfolios = st.slider("Simulated portfolios", 1_000, 20_000, 8_000, 1_000)
     weight_sum = float(edited["Weight %"].sum())
     if abs(weight_sum - 100.0) > 0.05:
-        st.warning(f"Entered weights sum to {weight_sum:.2f}%. Analysis uses weights rescaled to 100%.")
+        st.warning(
+            prose(f"Entered weights sum to {weight_sum:.2f}%. Analysis uses weights rescaled to 100%.")
+        )
     try:
         assets = assets_from_frame(edited)
         covariance = covariance_from_correlation(
@@ -365,7 +383,7 @@ def render_stress() -> None:
     st.subheader("Stress and Monte Carlo")
     left, right = st.columns(2)
     with left:
-        st.markdown("**Liquidity**")
+        st.markdown(prose("**Liquidity**"))
         revenue_multiplier = st.slider("Revenue level", 50.0, 120.0, 80.0, 5.0) / 100.0
         growth_delta = st.slider("Monthly growth shock", -10.0, 5.0, -3.0, 0.5) / 100.0
         opex_delta = st.slider("Operating-expense shock", -10.0, 30.0, 10.0, 1.0) / 100.0
@@ -392,8 +410,10 @@ def render_stress() -> None:
                 key="stress-cash",
             )
 
-        st.markdown("**Credit**")
-        st.caption("PD and LGD multipliers apply to the 1,000-loan book and are capped at 100%.")
+        st.markdown(prose("**Credit**"))
+        st.caption(
+            prose("Probability of default and loss given default are scaled on the 1,000-loan book and capped at 100%.")
+        )
         pd_multiplier = st.slider("PD multiplier", 0.5, 4.0, 1.75, 0.25)
         lgd_multiplier = st.slider("LGD multiplier", 0.5, 2.5, 1.25, 0.25)
         credit_stress = stress_credit_portfolio(
@@ -412,7 +432,7 @@ def render_stress() -> None:
         )
 
     with right:
-        st.markdown("**Terminal wealth**")
+        st.markdown(prose("**Terminal wealth**"))
         horizon = st.slider("Horizon (years)", 1, 30, 10)
         simulations = st.slider("Monte Carlo paths", 1_000, 20_000, 8_000, 1_000)
         assets = workbook_balanced_portfolio()
@@ -434,15 +454,17 @@ def render_stress() -> None:
         tails[0].metric("5th percentile", money(result.percentile_05))
         tails[1].metric("95th percentile", money(result.percentile_95))
         show(monte_carlo_plotly(result), key="monte-carlo")
-        st.caption("Loss means terminal value below the $1,000,000 starting investment.")
+        st.caption(prose("Loss means terminal value below the $1,000,000 starting investment."))
 
 
 def render_market() -> None:
     st.subheader("Market risk")
     st.caption(
-        "Upload adjusted closes, run the worked example, or download with yfinance. "
-        "The worked example is a constructed price path, not a market history. "
-        "Missing prices are dropped, not filled forward."
+        prose(
+            "Upload adjusted closes, run the worked example, or download prices. "
+            "The worked example is a constructed price path, not a market history. "
+            "Rows with a missing price are dropped."
+        )
     )
     source = st.radio(
         "Price source",
@@ -473,7 +495,9 @@ def render_market() -> None:
         prices = st.session_state.get("downloaded_prices")
 
     if prices is None:
-        st.info("Choose a price source to calculate returns, drawdown, VaR, and a rebalanced backtest.")
+        st.info(
+            prose("Choose a price source to calculate returns, drawdown, VaR, and a rebalanced backtest.")
+        )
         return
 
     try:
@@ -502,7 +526,7 @@ def render_market() -> None:
         )
     weight_total = float(sum(weights))
     if abs(weight_total - 1.0) > 1e-9:
-        st.warning(f"Weights sum to {weight_total:.2f}. Rescale them to 1.00 to run the backtest.")
+        st.warning(prose(f"Weights sum to {weight_total:.2f}. Rescale them to 1.00 to run the backtest."))
         return
 
     sample_periods = len(returns)
@@ -519,8 +543,10 @@ def render_market() -> None:
     )
     if sample_periods < 60:
         st.caption(
-            f"This sample has {sample_periods} returns. "
-            "The annualization factor stays on the sample length unless you change periods per year."
+            prose(
+                f"This sample has {sample_periods} returns. "
+                "The annualization factor stays on the sample length unless you change periods per year."
+            )
         )
     portfolio_returns = portfolio_return_series(returns, weights)
     performance = performance_summary(
@@ -571,10 +597,12 @@ def render_market() -> None:
         },
     )
     st.caption(
-        "VaR and expected shortfall are per-period loss fractions from the worst "
-        "ceil((1 − 95%) × n) returns. A negative loss means that point was a gain. "
-        "Sharpe and Sortino use a 3% risk-free rate on the same per-period threshold. "
-        "The backtest charges 5 bps of one-way turnover."
+        prose(
+            "VaR and expected shortfall are per-period loss fractions from the worst "
+            "ceil((1 − 95%) × n) returns. A negative loss means that point was a gain. "
+            "Sharpe and Sortino use a 3% risk-free rate on the same per-period threshold. "
+            "The backtest charges 5 bps of one-way turnover."
+        )
     )
 
 
@@ -597,5 +625,5 @@ with market_tab:
 
 st.divider()
 st.caption(
-    "Educational portfolio project. Not investment, lending, accounting, or financial advice."
+    prose("Educational portfolio project. Not investment, lending, accounting, or financial advice.")
 )

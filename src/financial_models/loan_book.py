@@ -161,7 +161,7 @@ def format_credit_book_decision(
     concentration: CreditConcentrationSummary,
     audit: CreditBookMemoAudit,
 ) -> str:
-    """One decision line: library EL and HHI, plus the memo corrections."""
+    """Expected loss, concentration, and the income figures that are not a loss VaR."""
     above = audit.default_rate_operational_risk_above_60
     below = audit.default_rate_operational_risk_at_or_below_60
     return (
@@ -169,9 +169,9 @@ def format_credit_book_decision(
         f"${summary.total_expected_loss:,.2f} and borrower HHI is "
         f"{concentration.herfindahl_hirschman_index:.6f} "
         f"({concentration.effective_borrower_count:.1f} effective borrowers). "
-        f"The retired memo's ${audit.net_income_p05:,.2f} and "
-        f"${audit.net_income_p01:,.2f} are the 5th and 1st percentiles of "
-        f"per-customer net income, not a loss VaR. Operational-risk scores "
+        f"Per-customer net income at the 5th and 1st percentiles is "
+        f"${audit.net_income_p05:,.2f} and ${audit.net_income_p01:,.2f}. "
+        f"Those are income levels, not a loss VaR. Operational-risk scores "
         f"above 60 default at {above:.2%} "
         f"({audit.default_count_operational_risk_above_60} of "
         f"{audit.count_operational_risk_above_60}), against {below:.2%} "

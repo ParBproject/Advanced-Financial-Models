@@ -78,6 +78,7 @@ class CreditBookAdapterTests(unittest.TestCase):
         self.assertIn("$43,146.55", line)
         self.assertIn("$25,890.70", line)
         self.assertIn("not a loss VaR", line)
+        self.assertNotIn("retired memo", line.lower())
         self.assertIn("29.67%", line)
         self.assertIn("29.81%", line)
         self.assertNotIn("2.5", line)

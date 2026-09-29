@@ -18,7 +18,7 @@ The baseline book is a 12-month liquidity forecast, a score-band expected-loss m
   <img src="docs/images/efficient-frontier.png" alt="Sampled long-only portfolios and efficient frontier" width="100%">
 </p>
 
-Figures above are written by `python examples/render_charts.py`. On the workbook assumptions the forecast ends at **$485,685** cash, with an NPV of monthly net cash flows of **$410,751**. The 1,000-loan book has **$68,121,079.07** of exposure and **$1,946,680.74** of expected loss at a 45% LGD. The covariance-aware balanced mix has **8.64%** expected return, **9.68%** volatility, and a Sharpe ratio of **0.58**.
+On the workbook assumptions the forecast ends at **$485,685** cash, with an NPV of monthly net cash flows of **$410,751**. The 1,000-loan book has **$68,121,079.07** of exposure and **$1,946,680.74** of expected loss at a 45% LGD. The covariance-aware balanced mix has **8.64%** expected return, **9.68%** volatility, and a Sharpe ratio of **0.58**. `python examples/render_charts.py` writes these charts.
 
 ## Architecture
 
@@ -81,13 +81,13 @@ The Market risk tab can then download adjusted closes. It also runs a short cons
 | `cash_flow` | Monthly revenue, operating expenses, rent, debt service, and CapEx. NPV uses the effective monthly rate from the annual discount assumption. |
 | `credit_risk` | Score-band PD, LGD, and expected loss = exposure × PD × LGD. Ratings follow the workbook: High at PD ≥ 20%, Medium at PD ≥ 7%. |
 | `credit_concentration` | Borrower HHI, effective borrower count, top-N share, and segment stress attribution. |
-| `loan_book` | Loads `data/portfolio_data.csv` into the loan schema. Expected loss uses the score-band PD, not the file's `PD_Score` column. |
+| `loan_book` | Loads the 1,000-loan CSV. Expected loss uses the score-band probability of default, not the probability stored on each row. |
 | `portfolio` | Excel-comparable zero-correlation volatility, √Σ(weight × volatility)². |
 | `advanced_portfolio` | Correlation checks, covariance risk wᵀΣw, long-only simulation, and a sampled frontier. |
 | `stress_testing` | Cash-flow and credit shocks, with PD and LGD capped at 100%. Terminal wealth is a lognormal Monte Carlo matched to the covariance-aware mean and variance. |
-| `market_data` | Simple returns, drawdown, Sharpe, Sortino, historical VaR and expected shortfall, and a fixed-weight backtest with one-way turnover costs. Missing prices are dropped, not filled forward. |
+| `market_data` | Simple returns, drawdown, Sharpe, Sortino, historical VaR and expected shortfall, and a fixed-weight backtest with one-way turnover costs. Rows with a missing price are dropped. |
 | `theme`, `charts` | One dark theme for the matplotlib figures and the Plotly board. |
-| `dashboard/app.py` | Board over the functions above. |
+| `dashboard/app.py` | Streamlit board for cash flow, credit, portfolio risk, stress, and market history. |
 
 The bundled six-asset correlation matrix is a one-factor illustration. It is not a historical estimate. On that matrix the balanced portfolio's volatility is **9.68%**, above the **6.82%** zero-correlation figure, because the equity sleeves move together.
 
