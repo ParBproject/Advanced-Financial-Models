@@ -58,7 +58,7 @@ The dashboard includes executive KPIs, editable cash-flow assumptions, loan expe
 
 ![Cash-flow forecast model](cash-flow-model.png)
 
-The 12-month model compounds revenue growth, forecasts operating expenses, rent, debt service and CapEx, then tracks liquidity month by month. The Python implementation converts the annual discount assumption to an equivalent monthly rate before discounting monthly net cash flows.
+The 12-month model compounds revenue growth, forecasts operating expenses, rent, debt service and CapEx, then tracks liquidity month by month. Net cash flow is revenue minus operating expenses, rent, the loan payment, and CapEx. Both the workbook and the Python model convert the annual discount assumption to an equivalent monthly rate and discount every month-end net cash flow at that rate. The three $15,000 CapEx items fall in months 2, 5, and 9.
 
 **Core outputs:** ending cash, average monthly net cash flow, minimum/maximum liquidity, and NPV.
 
@@ -106,7 +106,7 @@ The Excel workbook compares six asset classes using expected return, volatility,
 
 > **Baseline volatility = √Σ(weight × asset volatility)²**
 
-This baseline remains available for workbook-to-code reconciliation.
+The workbook's portfolio-risk formula is this same zero-correlation expression. This baseline remains available for workbook-to-code reconciliation.
 
 ### Covariance-aware extension
 

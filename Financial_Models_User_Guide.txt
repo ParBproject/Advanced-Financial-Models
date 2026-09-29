@@ -84,7 +84,7 @@ KEY INSIGHTS FROM BASE SCENARIO
 -------------------------------
 With 5% monthly revenue growth:
 - Starting position: $50,000
-- Revenue grows from $100,000 to ~$163,000 by month 12
+- Revenue grows from $100,000 in month 1 to $171,034 in month 12 ($100,000 × 1.05^11)
 - Operating expenses consume 60% of revenue
 - Three major CapEx investments ($15,000 each)
 - Monthly loan payment: $5,000
@@ -115,7 +115,7 @@ HOW TO USE
 ----------
 1. **Review Risk Parameters** (Blue cells in rows 5-6):
    - Loss Given Default (LGD): 45% ⚠️ KEY ASSUMPTION
-   - Risk-Free Rate: 3%
+   - Risk-Free Rate: 3% (reference only; expected loss does not use it)
 
 2. **Examine Credit Score to Default Rate Mapping** (Section D4:F13):
    - 800-850 → 1% default rate (Low risk)
@@ -167,7 +167,7 @@ KEY INSIGHTS FROM SAMPLE PORTFOLIO
 - Credit scores range from 450-850
 - Risk distribution shows concentration of high/medium/low risks
 - Expected loss percentage indicates overall portfolio health
-- High-risk loans (PD ≥ 20%) require enhanced monitoring
+- High-risk loans are the 25% PD band and above (credit scores below 600). The 15% band stays Medium.
 
 ADVANCED ANALYSIS SUGGESTIONS
 ----------------------------
@@ -223,7 +223,7 @@ HOW TO USE
 
 3. **Analyze Portfolio Metrics** (Rows 20-24):
    - Portfolio Expected Return: Weighted average return
-   - Portfolio Risk: Weighted standard deviation (simplified model)
+   - Portfolio Risk: Zero-correlation volatility, √Σ(Allocation%² × Asset Risk²)
    - Sharpe Ratio: (Return - Risk-Free Rate) / Risk
    - Expected Portfolio Value (10Y): Future value projection
    - Expected Total Return (10Y): Absolute dollar gain
@@ -277,11 +277,11 @@ Current "Balanced" approach:
 - 15% Small Cap + 15% International (growth and diversification)
 - 10% Alternative investments (Real Estate + Commodities)
 
-Expected outcomes:
-- Portfolio Return: ~8.5% annually
-- Portfolio Risk: ~11% standard deviation
-- Sharpe Ratio: ~0.50 (moderate risk-adjusted return)
-- 10-Year Value: ~$2.27 million (on $1M investment)
+Expected outcomes for the base allocation, using zero-correlation risk √Σ(Allocation%² × Asset Risk²):
+- Portfolio Return: 8.64% annually
+- Portfolio Risk: 6.82% standard deviation
+- Sharpe Ratio: 0.83
+- 10-Year Value: $2,290,327 (on a $1,000,000 investment)
 
 RISK CONSIDERATIONS
 ------------------
@@ -303,8 +303,8 @@ FORMULAS & FUNCTIONS
 ✓ SUMIFS - Conditional summation
 ✓ XLOOKUP/VLOOKUP - Data retrieval (conditional)
 ✓ IF nested functions - Complex logical branching
-✓ NPV - Net Present Value calculation
-✓ IRR/Average - Return on investment metrics
+✓ NPV - Net present value of month-end cash flows at the equivalent monthly discount rate
+✓ AVERAGE, SUM, MIN, and MAX - cash and portfolio summaries
 ✓ SUMPRODUCT - Array multiplication and summation
 ✓ SQRT - Standard deviation calculations
 ✓ COUNTIF - Conditional counting
@@ -332,7 +332,7 @@ ANALYSIS TOOLS
 -------------
 ✓ What-If Analysis capability (Scenario Manager ready)
 ✓ Data validation for controlled inputs (can be added)
-✓ Pivot Table compatibility (Loan Risk data)
+✓ Loan-level table that can be filtered (the workbook does not embed a pivot table)
 ✓ Solver optimization readiness (Portfolio model)
 ✓ Sensitivity analysis framework
 
@@ -342,12 +342,14 @@ METHODOLOGY & ASSUMPTIONS
 
 CASH FLOW MODEL ASSUMPTIONS
 --------------------------
-• Discount rate: 10% (typical corporate hurdle rate)
+• Discount rate: 10% annual, converted to the equivalent monthly rate (1.10)^(1/12) − 1 before discounting month-end cash flows
 • Revenue growth: 5% monthly compounded (aggressive but achievable for startups)
 • Operating expense ratio: 60% of revenue (varies by industry)
 • Fixed rent: $8,000/month (typical for small business)
 • Loan payment: $5,000/month (based on hypothetical loan terms)
 • CapEx timing: Strategic investments in months 2, 5, and 9
+• Cash identity: Revenue − operating expenses − rent − loan payment − CapEx
+• Salaries (50% of operating expenses) and marketing (10% of revenue) are memo rows and are not deducted again
 
 LOAN RISK MODEL METHODOLOGY
 --------------------------
