@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from .portfolio import AssetAllocation, PortfolioMetrics
+from .portfolio import AssetAllocation, PortfolioMetrics, _sharpe_ratio
 
 
 @dataclass(frozen=True)
@@ -115,6 +115,10 @@ def correlated_portfolio_metrics(
     total_weight = sum(asset.weight for asset in allocations)
     if abs(total_weight - 1.0) > 1e-9:
         raise ValueError("portfolio weights must sum to 1.0")
+    if not np.isfinite(risk_free_rate):
+        raise ValueError("risk-free rate must be finite")
+    if not np.isfinite(investment_amount):
+        raise ValueError("investment amount must be finite")
     if investment_amount < 0:
         raise ValueError("investment amount must be non-negative")
     if isinstance(horizon_years, bool) or not isinstance(horizon_years, int):
@@ -130,11 +134,9 @@ def correlated_portfolio_metrics(
     variance = float(weights @ cov @ weights)
     variance = max(variance, 0.0)
     volatility = float(np.sqrt(variance))
-    if volatility == 0.0:
-        excess_return = expected_return - risk_free_rate
-        sharpe = float("inf") if excess_return > 0 else 0.0
-    else:
-        sharpe = (expected_return - risk_free_rate) / volatility
+    if horizon_years >= 1 and expected_return <= -1.0:
+        raise ValueError("expected annual return must be greater than -100%")
+    sharpe = _sharpe_ratio(expected_return, volatility, risk_free_rate)
 
     future_value = investment_amount * (1.0 + expected_return) ** horizon_years
     return PortfolioMetrics(
@@ -160,6 +162,8 @@ def simulate_long_only_portfolios(
         raise TypeError("n_portfolios must be a positive integer")
     if n_portfolios < 1:
         raise ValueError("n_portfolios must be at least 1")
+    if not np.isfinite(risk_free_rate):
+        raise ValueError("risk-free rate must be finite")
 
     cov = validate_covariance_matrix(covariance, len(allocations))
     expected_asset_returns = np.asarray(

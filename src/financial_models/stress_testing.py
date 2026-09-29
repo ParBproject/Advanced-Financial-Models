@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 
@@ -30,6 +31,16 @@ class CashFlowStressScenario:
     def validate(self) -> None:
         if not self.name.strip():
             raise ValueError("scenario name must not be empty")
+        shocks = {
+            "revenue multiplier": self.revenue_multiplier,
+            "monthly growth delta": self.monthly_growth_delta,
+            "operating expense ratio delta": self.operating_expense_ratio_delta,
+            "fixed cost multiplier": self.fixed_cost_multiplier,
+            "capex multiplier": self.capex_multiplier,
+        }
+        for label, value in shocks.items():
+            if not math.isfinite(value):
+                raise ValueError(f"{label} must be finite")
         if self.revenue_multiplier < 0:
             raise ValueError("revenue multiplier must be non-negative")
         if self.fixed_cost_multiplier < 0:
@@ -58,6 +69,8 @@ class CreditStressScenario:
     def validate(self) -> None:
         if not self.name.strip():
             raise ValueError("scenario name must not be empty")
+        if not math.isfinite(self.pd_multiplier) or not math.isfinite(self.lgd_multiplier):
+            raise ValueError("credit stress multipliers must be finite")
         if self.pd_multiplier < 0 or self.lgd_multiplier < 0:
             raise ValueError("credit stress multipliers must be non-negative")
 
@@ -215,6 +228,11 @@ def simulate_portfolio_terminal_values(
     supplied asset weights and covariance matrix. They are then converted to
     lognormal parameters so simulated gross returns remain positive while
     matching the requested first two moments.
+
+    Each path is a sum of independent annual log returns, so the variance of
+    log wealth scales with the horizon and its volatility scales with the
+    square root of the horizon. Reported percentiles are quantiles of terminal
+    wealth, not loss-signed value at risk or expected shortfall.
     """
     if initial_investment < 0 or not np.isfinite(initial_investment):
         raise ValueError("initial investment must be finite and non-negative")

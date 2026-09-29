@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping
 from dataclasses import dataclass
 from statistics import fmean
@@ -19,6 +20,18 @@ class CashFlowAssumptions:
     annual_discount_rate: float = 0.10
 
     def validate(self) -> None:
+        numeric = {
+            "starting cash": self.starting_cash,
+            "revenue": self.revenue_month1,
+            "monthly revenue growth": self.monthly_revenue_growth,
+            "operating expense ratio": self.operating_expense_ratio,
+            "monthly loan payment": self.monthly_loan_payment,
+            "monthly rent": self.monthly_rent,
+            "annual discount rate": self.annual_discount_rate,
+        }
+        for label, value in numeric.items():
+            if not math.isfinite(value):
+                raise ValueError(f"{label} must be finite")
         if self.starting_cash < 0 or self.revenue_month1 < 0:
             raise ValueError("starting cash and revenue must be non-negative")
         if self.monthly_revenue_growth <= -1:
@@ -63,7 +76,12 @@ def forecast_cash_flow(
     months: int = 12,
     capex_by_month: Mapping[int, float] | None = None,
 ) -> CashFlowForecast:
-    """Build a monthly cash-flow forecast from the workbook's documented assumptions."""
+    """Build a monthly cash-flow forecast from the workbook's documented assumptions.
+
+    Net cash flow is revenue minus operating expenses, rent, the loan payment,
+    and CapEx. NPV discounts each month-end net cash flow at the monthly rate
+    equivalent to the annual discount rate.
+    """
     assumptions = assumptions or CashFlowAssumptions()
     assumptions.validate()
     if isinstance(months, bool) or not isinstance(months, int) or months < 1:
@@ -71,8 +89,10 @@ def forecast_cash_flow(
 
     capex_schedule = dict(DEFAULT_CAPEX if capex_by_month is None else capex_by_month)
     for month, amount in capex_schedule.items():
-        if not isinstance(month, int) or month < 1 or month > months:
+        if isinstance(month, bool) or not isinstance(month, int) or month < 1 or month > months:
             raise ValueError("capex month keys must fall inside the forecast horizon")
+        if not math.isfinite(amount):
+            raise ValueError("capex amounts must be finite")
         if amount < 0:
             raise ValueError("capex amounts must be non-negative")
 

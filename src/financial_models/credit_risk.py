@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from collections.abc import Iterable
 from dataclasses import dataclass
 from statistics import fmean
@@ -13,6 +14,8 @@ class Loan:
     credit_score: int
 
     def validate(self) -> None:
+        if not math.isfinite(self.exposure):
+            raise ValueError("loan exposure must be finite")
         if self.exposure < 0:
             raise ValueError("loan exposure must be non-negative")
         if not 300 <= self.credit_score <= 850:

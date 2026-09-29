@@ -43,6 +43,31 @@ class CovarianceTests(unittest.TestCase):
         self.assertAlmostEqual(metrics.sharpe_ratio, 0.08 / np.sqrt(0.0375))
         self.assertAlmostEqual(metrics.future_value, 110_000.0)
 
+    def test_zero_volatility_shortfall_has_negative_infinite_sharpe(self):
+        assets = (AssetAllocation("Cash", 0.01, 0.0, 1.0),)
+
+        metrics = correlated_portfolio_metrics(
+            assets,
+            np.array([[0.0]]),
+            risk_free_rate=0.03,
+            horizon_years=1,
+        )
+
+        self.assertEqual(metrics.sharpe_ratio, -np.inf)
+
+    def test_workbook_correlation_raises_risk_above_the_zero_correlation_baseline(self):
+        assets = workbook_balanced_portfolio()
+        covariance = covariance_from_correlation(
+            [asset.volatility for asset in assets],
+            illustrative_correlation_matrix(),
+        )
+
+        metrics = correlated_portfolio_metrics(assets, covariance)
+
+        self.assertAlmostEqual(round(metrics.volatility * 100, 2), 9.68)
+        self.assertAlmostEqual(round(metrics.sharpe_ratio, 2), 0.58)
+        self.assertGreater(metrics.volatility, 0.06824001758499187)
+
     def test_covariance_validation_rejects_asymmetric_matrix(self):
         covariance = np.array([[0.04, 0.01], [0.02, 0.09]])
 

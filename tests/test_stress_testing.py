@@ -63,6 +63,13 @@ class CashFlowStressTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "operating expense ratio"):
             stress_cash_flow(CashFlowAssumptions(), scenario)
 
+    def test_non_finite_cash_stress_multiplier_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "revenue multiplier must be finite"):
+            stress_cash_flow(
+                CashFlowAssumptions(),
+                CashFlowStressScenario("Broken", revenue_multiplier=float("nan")),
+            )
+
 
 class CreditStressTests(unittest.TestCase):
     def setUp(self):
@@ -169,6 +176,33 @@ class PortfolioMonteCarloTests(unittest.TestCase):
         self.assertLessEqual(result.percentile_75, result.percentile_95)
         self.assertGreaterEqual(result.probability_of_loss, 0.0)
         self.assertLessEqual(result.probability_of_loss, 1.0)
+
+    def test_horizon_is_the_sum_of_annual_log_returns(self):
+        assets = (AssetAllocation("Equity", 0.10, 0.20, 1.0),)
+        horizon = 4
+        n_simulations = 6
+        result = simulate_portfolio_terminal_values(
+            assets,
+            np.array([[0.04]]),
+            initial_investment=1_000.0,
+            horizon_years=horizon,
+            n_simulations=n_simulations,
+            random_state=11,
+        )
+        gross_mean = 1.10
+        log_variance = np.log1p((0.20**2) / (gross_mean**2))
+        annual_logs = np.random.default_rng(11).normal(
+            loc=np.log(gross_mean) - 0.5 * log_variance,
+            scale=np.sqrt(log_variance),
+            size=(n_simulations, horizon),
+        )
+        expected = 1_000.0 * np.exp(annual_logs.sum(axis=1))
+
+        np.testing.assert_allclose(result.terminal_values, expected)
+        self.assertAlmostEqual(
+            result.percentile_05,
+            float(np.quantile(expected, 0.05)),
+        )
 
 
 if __name__ == "__main__":
