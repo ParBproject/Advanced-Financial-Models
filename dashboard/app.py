@@ -71,8 +71,13 @@ def percent(value: float) -> str:
     return f"{value:.2%}"
 
 
-def show(figure) -> None:
-    st.plotly_chart(figure, use_container_width=True, config={"displaylogo": False})
+def show(figure, key: str) -> None:
+    st.plotly_chart(
+        figure,
+        use_container_width=True,
+        config={"displaylogo": False},
+        key=key,
+    )
 
 
 def portfolio_frame() -> pd.DataFrame:
@@ -153,7 +158,7 @@ def render_overview() -> None:
     columns[3].metric("Covariance-aware volatility", percent(portfolio.volatility))
 
     st.markdown(format_credit_book_decision(credit, concentration, audit))
-    show(cash_flow_plotly(cash))
+    show(cash_flow_plotly(cash), key="overview-cash")
     st.caption(
         "Cash flow uses the workbook assumptions. Credit uses the 1,000-loan book at a 45% LGD "
         "and the score-band PD, not the file's PD_Score column. "
@@ -180,7 +185,7 @@ def render_cash_flow() -> None:
     metrics[1].metric("NPV of net cash flows", money(forecast.npv_of_net_cash_flows))
     metrics[2].metric("Minimum cash", money(forecast.minimum_cash_balance))
     metrics[3].metric("Average monthly net cash flow", money(forecast.average_monthly_net_cash_flow))
-    show(cash_flow_plotly(forecast))
+    show(cash_flow_plotly(forecast), key="cash-flow-chart")
     st.caption("NPV discounts each month at the effective monthly rate from the 10% annual assumption.")
     frame = pd.DataFrame(
         {
@@ -233,7 +238,7 @@ def render_credit() -> None:
         help="100,000 exposure times the 15% band PD times the selected LGD.",
     )
     st.markdown(format_credit_book_decision(summary, concentration, audit))
-    show(credit_ratings_plotly(summary, concentration))
+    show(credit_ratings_plotly(summary, concentration), key="credit-ratings")
     rows = pd.DataFrame(
         [
             {
@@ -308,7 +313,7 @@ def render_portfolio() -> None:
     metrics[3].metric("Sharpe ratio", f"{aware.sharpe_ratio:.2f}")
     left, right = st.columns(2)
     with left:
-        show(allocation_plotly(assets))
+        show(allocation_plotly(assets), key="allocation")
     with right:
         show(
             frontier_plotly(
@@ -319,7 +324,8 @@ def render_portfolio() -> None:
                 [point.expected_return for point in frontier],
                 aware.volatility,
                 aware.expected_return,
-            )
+            ),
+            key="frontier",
         )
     best = pd.DataFrame(
         [
@@ -381,7 +387,10 @@ def render_stress() -> None:
             impact = st.columns(2)
             impact[0].metric("Ending cash impact", money(cash_stress.ending_cash_change))
             impact[1].metric("NPV impact", money(cash_stress.npv_change))
-            show(stressed_cash_plotly(cash_stress.baseline, cash_stress.stressed, "Stressed"))
+            show(
+                stressed_cash_plotly(cash_stress.baseline, cash_stress.stressed, "Stressed"),
+                key="stress-cash",
+            )
 
         st.markdown("**Credit**")
         st.caption("PD and LGD multipliers apply to the 1,000-loan book and are capped at 100%.")
@@ -424,7 +433,7 @@ def render_stress() -> None:
         tails = st.columns(2)
         tails[0].metric("5th percentile", money(result.percentile_05))
         tails[1].metric("95th percentile", money(result.percentile_95))
-        show(monte_carlo_plotly(result))
+        show(monte_carlo_plotly(result), key="monte-carlo")
         st.caption("Loss means terminal value below the $1,000,000 starting investment.")
 
 
@@ -539,7 +548,10 @@ def render_market() -> None:
     wealth = {"Portfolio": cumulative_wealth(portfolio_returns)}
     for column in columns:
         wealth[str(column)] = cumulative_wealth(returns[column])
-    show(wealth_plotly(list(portfolio_returns.index), wealth, title="Growth of $1"))
+    show(
+        wealth_plotly(list(portfolio_returns.index), wealth, title="Growth of $1"),
+        key="market-wealth",
+    )
     risk = pd.DataFrame(
         {
             "Asset": summary.annualized_volatility.index.astype(str),
