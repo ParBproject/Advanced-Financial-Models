@@ -6,6 +6,7 @@ import pandas as pd
 
 from financial_models.market_data import (
     align_prices,
+    annualize_sample,
     backtest_rebalanced_portfolio,
     cumulative_wealth,
     download_adjusted_close,
@@ -49,6 +50,8 @@ class MarketDataTests(unittest.TestCase):
         )
         self.assertAlmostEqual(value_at_risk, 0.06)
         self.assertAlmostEqual(expected_shortfall, 0.08)
+        # (1 - 0.80) * 6 = 1.2, so the tail is the worst 2 returns.
+        # Both have full weight: (0.10 + 0.06) / 2 = 0.08, not a fractional blend.
 
         gain_var, gain_shortfall = historical_var_expected_shortfall(
             [0.01, 0.02, 0.03, 0.04],
@@ -56,6 +59,28 @@ class MarketDataTests(unittest.TestCase):
         )
         self.assertAlmostEqual(gain_var, -0.01)
         self.assertAlmostEqual(gain_shortfall, -0.01)
+
+    def test_short_samples_can_stay_in_period_units(self):
+        self.assertFalse(annualize_sample(4))
+        self.assertTrue(annualize_sample(60))
+        returns = portfolio_return_series(simple_returns(worked_example_prices()), [0.5, 0.5])
+        values = returns.to_numpy(dtype=float)
+        summary = performance_summary(
+            returns,
+            periods_per_year=252,
+            risk_free_rate=0.03,
+            annualize=False,
+        )
+        threshold = 0.03 / 252
+        excess = values - threshold
+        sample_volatility = float(np.std(values, ddof=1))
+        self.assertAlmostEqual(summary.annualized_volatility, sample_volatility)
+        self.assertAlmostEqual(summary.sharpe_ratio, float(excess.mean()) / sample_volatility)
+        self.assertAlmostEqual(summary.cagr, summary.cumulative_return)
+        annualized = performance_summary(returns, periods_per_year=252, risk_free_rate=0.03)
+        self.assertGreater(annualized.cagr, 1.0)
+        table = historical_risk_summary(worked_example_prices(), periods_per_year=252)
+        self.assertGreater(float(table.annualized_returns["AAA"]), 1.0)
 
     def test_sortino_uses_the_risk_free_threshold(self):
         summary = performance_summary(

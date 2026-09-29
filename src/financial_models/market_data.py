@@ -202,6 +202,23 @@ def portfolio_return_series(
     )
 
 
+ANNUALIZE_MIN_OBSERVATIONS = 60
+TAIL_RISK_MIN_OBSERVATIONS = 20
+
+
+def annualize_sample(n_observations: int) -> bool:
+    """Return whether a return sample is long enough to annualize.
+
+    Fewer than 60 observations stay in period units. Annualizing a four-day
+    path at 252 periods per year turns a small drift into a triple-digit rate.
+    """
+    if isinstance(n_observations, bool) or not isinstance(n_observations, int):
+        raise TypeError("observation count must be a positive integer")
+    if n_observations < 1:
+        raise ValueError("observation count must be a positive integer")
+    return n_observations >= ANNUALIZE_MIN_OBSERVATIONS
+
+
 def historical_var_expected_shortfall(
     returns: pd.Series | Sequence[float] | np.ndarray,
     *,
@@ -212,8 +229,12 @@ def historical_var_expected_shortfall(
     The tail holds the worst ``k`` observations, where
     ``k = ceil((1 - confidence) * n)`` and ``k`` is at least 1. VaR is the
     loss on the least severe observation in that tail. Expected Shortfall is
-    the average loss across the tail. Neither figure is clipped at zero, so a
-    gain at the quantile stays a negative loss.
+    the equal-weighted average of those ``k`` losses. The boundary observation
+    (the least severe loss in the tail) gets the same full weight as the worse
+    ones. When ``(1 - confidence) * n`` is not an integer, the count is rounded
+    up with ``ceil`` rather than giving that boundary observation a fractional
+    weight. Neither figure is clipped at zero, so a gain at the quantile stays
+    a negative loss.
     """
     confidence = require_finite("confidence", confidence)
     if not 0.0 < confidence < 1.0:
@@ -243,6 +264,7 @@ def performance_summary(
     periods_per_year: int = 252,
     risk_free_rate: float = 0.03,
     confidence: float = 0.95,
+    annualize: bool = True,
 ) -> PerformanceSummary:
     """Summarize growth, downside risk, and risk-adjusted performance.
 
@@ -250,29 +272,43 @@ def performance_summary(
     risk-free rate spread evenly across periods (``risk_free_rate /
     periods_per_year``). Downside deviation is the square root of the mean
     squared shortfall below that threshold, including zeros for observations
-    that clear it, then scaled by ``sqrt(periods_per_year)``.
+    that clear it.
+
+    When ``annualize`` is true, excess return is multiplied by
+    ``periods_per_year`` and volatility by its square root. When it is false,
+    those scales stay at 1, so volatility and the ratios are per period.
+    ``cagr`` is then the cumulative return, not an annual rate. The risk-free
+    rate is still divided by ``periods_per_year``, so a four-day sample with
+    252 periods per year is charged about four days of interest, not a full
+    year.
     """
     periods_per_year = _validate_periods_per_year(periods_per_year)
+    if not isinstance(annualize, bool):
+        raise TypeError("annualize must be true or false")
     risk_free_rate = require_finite("risk-free rate", risk_free_rate)
     values = _return_array(returns)
+    return_scale = float(periods_per_year if annualize else 1)
+    volatility_scale = float(np.sqrt(periods_per_year) if annualize else 1.0)
 
     wealth = np.cumprod(1.0 + values)
     final_wealth = float(wealth[-1])
     cumulative_return = final_wealth - 1.0
-    if final_wealth <= 0.0:
+    if not annualize:
+        cagr = cumulative_return
+    elif final_wealth <= 0.0:
         cagr = -1.0
     else:
         cagr = float(final_wealth ** (periods_per_year / values.size) - 1.0)
 
     threshold = risk_free_rate / periods_per_year
     excess = values - threshold
-    annualized_excess = float(excess.mean() * periods_per_year)
+    annualized_excess = float(excess.mean() * return_scale)
     if values.size > 1:
-        annualized_volatility = float(np.std(values, ddof=1) * np.sqrt(periods_per_year))
+        annualized_volatility = float(np.std(values, ddof=1) * volatility_scale)
     else:
         annualized_volatility = 0.0
     downside = np.minimum(excess, 0.0)
-    downside_deviation = float(np.sqrt(np.mean(downside**2)) * np.sqrt(periods_per_year))
+    downside_deviation = float(np.sqrt(np.mean(downside**2)) * volatility_scale)
 
     value_at_risk, expected_shortfall = historical_var_expected_shortfall(
         values,

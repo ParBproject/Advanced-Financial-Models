@@ -42,7 +42,9 @@ from financial_models.charts import (
     wealth_plotly,
 )
 from financial_models.market_data import (
+    TAIL_RISK_MIN_OBSERVATIONS,
     align_prices,
+    annualize_sample,
     backtest_rebalanced_portfolio,
     cumulative_wealth,
     download_adjusted_close,
@@ -501,7 +503,6 @@ def render_market() -> None:
         return
 
     try:
-        summary = historical_risk_summary(prices, periods_per_year=252)
         returns = simple_returns(prices)
     except (TypeError, ValueError) as exc:
         st.error(str(exc))
@@ -530,45 +531,69 @@ def render_market() -> None:
         return
 
     sample_periods = len(returns)
-    default_periods = 252 if sample_periods >= 60 else sample_periods
     periods_per_year = int(
         st.number_input(
             "Periods per year",
             min_value=1,
-            value=default_periods,
+            value=252,
             step=1,
             key=f"periods-{source}-{sample_periods}",
-            help="Short samples default to one period per observation so CAGR is the holding-period return.",
+            help=(
+                "Divides the 3% risk-free rate into one period. "
+                "Samples of 60 or more returns are also annualized with this factor."
+            ),
         )
     )
-    if sample_periods < 60:
+    annualize = annualize_sample(sample_periods)
+    show_tail_risk = sample_periods >= TAIL_RISK_MIN_OBSERVATIONS
+    if not annualize:
         st.caption(
             prose(
-                f"This sample has {sample_periods} returns. "
-                "The annualization factor stays on the sample length unless you change periods per year."
+                f"This sample has {sample_periods} returns, so return, volatility, Sharpe, and Sortino "
+                "are not annualized. "
+                f"The 3% risk-free rate is charged as 3% × {sample_periods} / {periods_per_year} "
+                "over the window."
             )
         )
     portfolio_returns = portfolio_return_series(returns, weights)
-    performance = performance_summary(
-        portfolio_returns,
-        periods_per_year=periods_per_year,
-        risk_free_rate=0.03,
-    )
+    try:
+        summary = historical_risk_summary(
+            prices,
+            periods_per_year=periods_per_year if annualize else 1,
+        )
+        performance = performance_summary(
+            portfolio_returns,
+            periods_per_year=periods_per_year,
+            risk_free_rate=0.03,
+            annualize=annualize,
+        )
+    except (TypeError, ValueError) as exc:
+        st.error(str(exc))
+        return
     backtest = backtest_rebalanced_portfolio(
         prices,
         weights,
         rebalance_every=max(1, len(returns) // 2),
         transaction_cost_bps=5.0,
     )
+    volatility_label = "Annualized volatility" if annualize else "Period volatility"
+    sharpe_label = "Sharpe" if annualize else "Sharpe (not annualized)"
+    sortino_label = "Sortino" if annualize else "Sortino (not annualized)"
     metrics = st.columns(4)
     metrics[0].metric("Cumulative return", percent(performance.cumulative_return))
     metrics[1].metric("Max drawdown", percent(performance.max_drawdown))
-    metrics[2].metric("95% historical VaR", percent(performance.value_at_risk))
-    metrics[3].metric("Annualized volatility", percent(performance.annualized_volatility))
+    if show_tail_risk:
+        metrics[2].metric("95% historical VaR", percent(performance.value_at_risk))
+    else:
+        metrics[2].metric("95% historical VaR", "n/a")
+    metrics[3].metric(volatility_label, percent(performance.annualized_volatility))
     more = st.columns(4)
-    more[0].metric("Sharpe", f"{performance.sharpe_ratio:.2f}")
-    more[1].metric("Sortino", f"{performance.sortino_ratio:.2f}")
-    more[2].metric("95% expected shortfall", percent(performance.expected_shortfall))
+    more[0].metric(sharpe_label, f"{performance.sharpe_ratio:.2f}")
+    more[1].metric(sortino_label, f"{performance.sortino_ratio:.2f}")
+    if show_tail_risk:
+        more[2].metric("95% expected shortfall", percent(performance.expected_shortfall))
+    else:
+        more[2].metric("95% expected shortfall", "n/a")
     more[3].metric("Backtest ending wealth", f"{backtest.wealth.iloc[-1]:.4f}")
 
     wealth = {"Portfolio": cumulative_wealth(portfolio_returns)}
@@ -578,11 +603,13 @@ def render_market() -> None:
         wealth_plotly(list(portfolio_returns.index), wealth, title="Growth of $1"),
         key="market-wealth",
     )
+    return_column = "Annualized return" if annualize else "Mean period return"
+    volatility_column = "Annualized volatility" if annualize else "Period volatility"
     risk = pd.DataFrame(
         {
             "Asset": summary.annualized_volatility.index.astype(str),
-            "Annualized return": summary.annualized_returns.to_numpy(),
-            "Annualized volatility": summary.annualized_volatility.to_numpy(),
+            return_column: summary.annualized_returns.to_numpy(),
+            volatility_column: summary.annualized_volatility.to_numpy(),
             "Max drawdown": summary.max_drawdown.to_numpy(),
         }
     )
@@ -591,19 +618,28 @@ def render_market() -> None:
         hide_index=True,
         use_container_width=True,
         column_config={
-            "Annualized return": st.column_config.NumberColumn(format="%.2%"),
-            "Annualized volatility": st.column_config.NumberColumn(format="%.2%"),
+            return_column: st.column_config.NumberColumn(format="%.2%"),
+            volatility_column: st.column_config.NumberColumn(format="%.2%"),
             "Max drawdown": st.column_config.NumberColumn(format="%.2%"),
         },
     )
-    st.caption(
-        prose(
+    if show_tail_risk:
+        tail_note = (
             "VaR and expected shortfall are per-period loss fractions from the worst "
-            "ceil((1 − 95%) × n) returns. A negative loss means that point was a gain. "
-            "Sharpe and Sortino use a 3% risk-free rate on the same per-period threshold. "
-            "The backtest charges 5 bps of one-way turnover."
+            "ceil((1 − 95%) × n) returns, each with full weight. "
+            "A negative loss means that point was a gain. "
         )
+    else:
+        tail_note = (
+            f"95% VaR and expected shortfall need at least {TAIL_RISK_MIN_OBSERVATIONS} returns. "
+            f"This sample has {sample_periods}, so those figures are not shown. "
+        )
+    ratio_note = (
+        "Sharpe and Sortino are annualized with a 3% risk-free rate divided across periods per year. "
+        if annualize
+        else "Sharpe and Sortino use that scaled risk-free rate and are not annualized. "
     )
+    st.caption(prose(tail_note + ratio_note + "The backtest charges 5 bps of one-way turnover."))
 
 
 render_header()

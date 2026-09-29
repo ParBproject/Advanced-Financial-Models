@@ -1,4 +1,5 @@
 import unittest
+from importlib.util import find_spec
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -17,6 +18,7 @@ class ChartThemeTests(unittest.TestCase):
             path = save_figure(figure, Path(directory) / "cash-flow.png")
             self.assertEqual(path.read_bytes()[:8], b"\x89PNG\r\n\x1a\n")
 
+    @unittest.skipUnless(find_spec("plotly") is not None, "plotly is not installed")
     def test_plotly_layout_uses_the_emerald_accent(self):
         layout = plotly_layout("Cash", x_title="Month", y_title="US dollars")
         self.assertEqual(layout["paper_bgcolor"], BG)

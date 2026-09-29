@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from .portfolio import AssetAllocation, PortfolioMetrics, sharpe_ratio
+from .portfolio import AssetAllocation, PortfolioMetrics, compound_future_value, sharpe_ratio
 from .validation import require_finite
 
 
@@ -146,7 +146,7 @@ def correlated_portfolio_metrics(
     volatility = float(np.sqrt(variance))
     sharpe = sharpe_ratio(expected_return, volatility, risk_free_rate)
 
-    future_value = investment_amount * (1.0 + expected_return) ** horizon_years
+    future_value = compound_future_value(investment_amount, expected_return, horizon_years)
     return PortfolioMetrics(
         expected_return=expected_return,
         volatility=volatility,

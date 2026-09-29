@@ -80,7 +80,7 @@ def forecast_cash_flow(
 
     capex_schedule = dict(DEFAULT_CAPEX if capex_by_month is None else capex_by_month)
     for month, amount in capex_schedule.items():
-        if not isinstance(month, int) or month < 1 or month > months:
+        if isinstance(month, bool) or not isinstance(month, int) or month < 1 or month > months:
             raise ValueError("capex month keys must fall inside the forecast horizon")
         amount = require_finite("capex amount", amount)
         if amount < 0:

@@ -54,6 +54,18 @@ class WorkbookFormulaTests(unittest.TestCase):
         self.assertAlmostEqual(self._value(self.portfolio, "B21"), metrics.volatility, places=8)
         self.assertAlmostEqual(self._value(self.portfolio, "B22"), metrics.sharpe_ratio, places=8)
 
+    def test_documentation_sheet_matches_the_models(self):
+        with zipfile.ZipFile("Advanced_Financial_Models.xlsx") as workbook:
+            shared = workbook.read("xl/sharedStrings.xml").decode("utf-8")
+            documentation = workbook.read("xl/worksheets/sheet1.xml").decode("utf-8")
+        self.assertIn('r="A26"', documentation)
+        self.assertIn("NPV of net cash flows", shared)
+        self.assertNotIn("NPV and IRR", shared)
+        self.assertIn("zero-correlation volatility", shared)
+        self.assertNotIn("weighted standard deviation", shared)
+        self.assertIn("equivalent monthly rate", shared)
+        self.assertNotIn("IRR", shared)
+
 
 if __name__ == "__main__":
     unittest.main()

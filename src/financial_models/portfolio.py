@@ -26,6 +26,25 @@ class AssetAllocation:
             raise ValueError("asset weights must be between 0 and 1")
 
 
+def compound_future_value(
+    investment_amount: float,
+    expected_return: float,
+    horizon_years: int,
+) -> float:
+    """Compound a portfolio return for ``horizon_years``.
+
+    A gross return of zero or less is not a meaningful base for multi-year
+    compounding: ``(1 - 150%) ** 3`` is negative. One-year and longer horizons
+    therefore require an expected return above -100%. A zero-year horizon does
+    not compound, so the investment amount is returned unchanged.
+    """
+    if horizon_years >= 1 and expected_return <= -1.0:
+        raise ValueError(
+            "expected return must be greater than -100% when compounding over a year or more"
+        )
+    return investment_amount * (1.0 + expected_return) ** horizon_years
+
+
 def sharpe_ratio(expected_return: float, volatility: float, risk_free_rate: float) -> float:
     """Return excess return per unit of volatility.
 
@@ -91,7 +110,7 @@ def portfolio_metrics(
     volatility = sqrt(variance)
     sharpe = sharpe_ratio(expected_return, volatility, risk_free_rate)
 
-    future_value = investment_amount * (1.0 + expected_return) ** horizon_years
+    future_value = compound_future_value(investment_amount, expected_return, horizon_years)
     return PortfolioMetrics(
         expected_return=expected_return,
         volatility=volatility,

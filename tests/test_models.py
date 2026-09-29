@@ -1,4 +1,3 @@
-import math
 import unittest
 
 from financial_models.cash_flow import CashFlowAssumptions, forecast_cash_flow
@@ -26,6 +25,8 @@ class CashFlowTests(unittest.TestCase):
         self.assertAlmostEqual(first.net_cash_flow, 27_000.0)
         self.assertAlmostEqual(first.ending_cash, 77_000.0)
         self.assertEqual(len(result.periods), 12)
+        self.assertAlmostEqual(result.periods[-1].ending_cash, 485_685, places=0)
+        self.assertAlmostEqual(result.npv_of_net_cash_flows, 410_751, places=0)
 
     def test_default_capex_is_applied_to_documented_months(self):
         result = forecast_cash_flow()
@@ -35,6 +36,10 @@ class CashFlowTests(unittest.TestCase):
         self.assertEqual(capex[5], 15_000.0)
         self.assertEqual(capex[9], 15_000.0)
         self.assertEqual(capex[1], 0.0)
+
+    def test_boolean_capex_month_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "capex month"):
+            forecast_cash_flow(capex_by_month={True: 1_000.0})
 
     def test_invalid_operating_expense_ratio_is_rejected(self):
         with self.assertRaisesRegex(ValueError, "operating expense ratio"):
@@ -114,9 +119,9 @@ class PortfolioTests(unittest.TestCase):
         metrics = portfolio_metrics(workbook_balanced_portfolio())
 
         self.assertAlmostEqual(metrics.expected_return, 0.0864)
-        self.assertGreater(metrics.volatility, 0.0)
-        self.assertTrue(math.isfinite(metrics.sharpe_ratio))
-        self.assertGreater(metrics.future_value, 1_000_000.0)
+        self.assertAlmostEqual(metrics.volatility, 0.0682, places=4)
+        self.assertAlmostEqual(metrics.sharpe_ratio, 0.83, places=2)
+        self.assertAlmostEqual(metrics.future_value, 2_290_327, places=0)
 
     def test_portfolio_rejects_weights_that_do_not_sum_to_one(self):
         assets = list(workbook_balanced_portfolio())
@@ -141,6 +146,21 @@ class PortfolioTests(unittest.TestCase):
 
         self.assertEqual(lagging.sharpe_ratio, float("-inf"))
         self.assertEqual(matching.sharpe_ratio, 0.0)
+
+    def test_compounding_rejects_returns_at_or_below_minus_100_percent(self):
+        destroyed = [AssetAllocation("Destroyed", -1.5, 0.2, 1.0)]
+        with self.assertRaisesRegex(ValueError, "greater than -100%"):
+            portfolio_metrics(destroyed, horizon_years=3)
+        wiped = [AssetAllocation("Wiped", -1.0, 0.2, 1.0)]
+        with self.assertRaisesRegex(ValueError, "greater than -100%"):
+            portfolio_metrics(wiped, horizon_years=1)
+        unchanged = portfolio_metrics(destroyed, horizon_years=0)
+        self.assertEqual(unchanged.future_value, 1_000_000.0)
+        halved = portfolio_metrics(
+            [AssetAllocation("Halved", -0.5, 0.2, 1.0)],
+            horizon_years=3,
+        )
+        self.assertAlmostEqual(halved.future_value, 1_000_000.0 * (0.5**3))
 
 
 if __name__ == "__main__":

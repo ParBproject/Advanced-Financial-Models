@@ -43,6 +43,11 @@ class CovarianceTests(unittest.TestCase):
         self.assertAlmostEqual(metrics.sharpe_ratio, 0.08 / np.sqrt(0.0375))
         self.assertAlmostEqual(metrics.future_value, 110_000.0)
 
+    def test_compounding_rejects_returns_at_or_below_minus_100_percent(self):
+        assets = (AssetAllocation("Destroyed", -1.5, 0.2, 1.0),)
+        with self.assertRaisesRegex(ValueError, "greater than -100%"):
+            correlated_portfolio_metrics(assets, np.array([[0.04]]), horizon_years=3)
+
     def test_covariance_must_match_stated_volatility(self):
         assets = (AssetAllocation("A", 0.08, 0.20, 1.0),)
         with self.assertRaisesRegex(ValueError, "covariance diagonal"):
