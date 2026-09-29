@@ -76,6 +76,8 @@ class MarketDataTests(unittest.TestCase):
         sample_volatility = float(np.std(values, ddof=1))
         self.assertAlmostEqual(summary.annualized_volatility, sample_volatility)
         self.assertAlmostEqual(summary.sharpe_ratio, float(excess.mean()) / sample_volatility)
+        self.assertIsNone(summary.sortino_ratio)
+        self.assertIn("20", summary.sortino_reason)
         self.assertAlmostEqual(summary.cagr, summary.cumulative_return)
         annualized = performance_summary(returns, periods_per_year=252, risk_free_rate=0.03)
         self.assertGreater(annualized.cagr, 1.0)
@@ -83,21 +85,35 @@ class MarketDataTests(unittest.TestCase):
         self.assertGreater(float(table.annualized_returns["AAA"]), 1.0)
 
     def test_sortino_uses_the_risk_free_threshold(self):
-        summary = performance_summary(
+        returns = [-0.05, -0.05, -0.05] + [0.01] * 17
+        summary = performance_summary(returns, periods_per_year=1, risk_free_rate=0.01)
+        downside = math.sqrt((3 * 0.06**2) / 20.0)
+        self.assertAlmostEqual(summary.sortino_ratio, (-0.18 / 20.0) / downside)
+        self.assertIsNone(summary.sortino_reason)
+
+    def test_sortino_is_omitted_without_enough_returns_or_shortfalls(self):
+        short = performance_summary(
             [0.10, -0.05, 0.02],
             periods_per_year=1,
             risk_free_rate=0.01,
             confidence=0.67,
         )
-        downside = math.sqrt((0.06**2) / 3.0)
-        self.assertAlmostEqual(summary.sortino_ratio, (0.04 / 3.0) / downside)
-        self.assertLess(summary.max_drawdown, 0.0)
-        self.assertGreaterEqual(summary.expected_shortfall, summary.value_at_risk)
+        self.assertIsNone(short.sortino_ratio)
+        self.assertIn("20", short.sortino_reason)
+        self.assertLess(short.max_drawdown, 0.0)
+        self.assertGreaterEqual(short.expected_shortfall, short.value_at_risk)
+
+        few_shortfalls = [-0.05, -0.04] + [0.02] * 18
+        withheld = performance_summary(few_shortfalls, periods_per_year=1, risk_free_rate=0.01)
+        self.assertEqual(len(few_shortfalls), 20)
+        self.assertIsNone(withheld.sortino_ratio)
+        self.assertIn("3", withheld.sortino_reason)
+        self.assertIsNotNone(withheld.sharpe_ratio)
 
     def test_zero_excess_volatility_sharpe_is_negative_infinity(self):
         summary = performance_summary([0.01, 0.01], periods_per_year=1, risk_free_rate=0.02)
         self.assertEqual(summary.sharpe_ratio, float("-inf"))
-        self.assertAlmostEqual(summary.sortino_ratio, -1.0)
+        self.assertIsNone(summary.sortino_ratio)
 
     def test_non_finite_returns_are_rejected(self):
         with self.assertRaisesRegex(ValueError, "finite"):

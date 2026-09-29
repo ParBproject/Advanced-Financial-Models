@@ -72,7 +72,7 @@ Live price downloads are optional and are not required for the commands above:
 python -m pip install -e ".[market-data]"
 ```
 
-The Market risk tab can then download adjusted closes. It also runs a short constructed price path that is labeled as a worked example, not as market history. Samples shorter than 60 returns are not annualized, and the 3% risk-free rate is scaled by how much of a year those observations cover. 95% VaR and expected shortfall are shown only when the sample has at least 20 returns.
+The Market risk tab can then download adjusted closes. It also runs a short constructed price path that is labeled as a worked example, not as market history. Samples shorter than 60 returns are not annualized, and the 3% risk-free rate is scaled by how much of a year those observations cover. 95% VaR, expected shortfall, and Sortino are shown only with at least 20 returns. Sortino also needs at least three returns below the risk-free rate.
 
 ## Modules
 

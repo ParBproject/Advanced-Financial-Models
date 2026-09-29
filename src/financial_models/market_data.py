@@ -40,10 +40,11 @@ class PerformanceSummary:
     cagr: float
     annualized_volatility: float
     sharpe_ratio: float
-    sortino_ratio: float
+    sortino_ratio: float | None
     max_drawdown: float
     value_at_risk: float
     expected_shortfall: float
+    sortino_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -114,6 +115,33 @@ def _return_array(returns: pd.Series | Sequence[float] | np.ndarray) -> np.ndarr
     if np.any(values < -1.0):
         raise ValueError("returns cannot be less than -100%")
     return values
+
+
+def _sortino_ratio(
+    excess: float,
+    downside_deviation: float,
+    *,
+    n_observations: int,
+    downside_count: int,
+) -> tuple[float | None, str | None]:
+    """Return Sortino, or ``None`` and a short reason when it is not estimated.
+
+    The sample must have at least ``TAIL_RISK_MIN_OBSERVATIONS`` returns and
+    at least ``SORTINO_MIN_DOWNSIDE`` observations strictly below the
+    risk-free threshold. A deviation built from one or two shortfalls is not
+    reported.
+    """
+    if n_observations < TAIL_RISK_MIN_OBSERVATIONS:
+        return None, (
+            f"needs at least {TAIL_RISK_MIN_OBSERVATIONS} returns "
+            f"(this sample has {n_observations})"
+        )
+    if downside_count < SORTINO_MIN_DOWNSIDE:
+        return None, (
+            f"needs at least {SORTINO_MIN_DOWNSIDE} returns below the risk-free rate "
+            f"(this sample has {downside_count})"
+        )
+    return _ratio(excess, downside_deviation), None
 
 
 def _ratio(excess: float, risk: float) -> float:
@@ -204,6 +232,7 @@ def portfolio_return_series(
 
 ANNUALIZE_MIN_OBSERVATIONS = 60
 TAIL_RISK_MIN_OBSERVATIONS = 20
+SORTINO_MIN_DOWNSIDE = 3
 
 
 def annualize_sample(n_observations: int) -> bool:
@@ -281,6 +310,11 @@ def performance_summary(
     rate is still divided by ``periods_per_year``, so a four-day sample with
     252 periods per year is charged about four days of interest, not a full
     year.
+
+    ``sortino_ratio`` is ``None`` when the sample has fewer than 20 returns,
+    or fewer than 3 returns fall below the per-period risk-free rate.
+    ``sortino_reason`` then says which gate failed. One or two shortfalls are
+    not enough to estimate downside deviation.
     """
     periods_per_year = _validate_periods_per_year(periods_per_year)
     if not isinstance(annualize, bool):
@@ -308,7 +342,14 @@ def performance_summary(
     else:
         annualized_volatility = 0.0
     downside = np.minimum(excess, 0.0)
+    downside_count = int(np.count_nonzero(excess < 0.0))
     downside_deviation = float(np.sqrt(np.mean(downside**2)) * volatility_scale)
+    sortino_ratio, sortino_reason = _sortino_ratio(
+        annualized_excess,
+        downside_deviation,
+        n_observations=int(values.size),
+        downside_count=downside_count,
+    )
 
     value_at_risk, expected_shortfall = historical_var_expected_shortfall(
         values,
@@ -319,10 +360,11 @@ def performance_summary(
         cagr=cagr,
         annualized_volatility=annualized_volatility,
         sharpe_ratio=_ratio(annualized_excess, annualized_volatility),
-        sortino_ratio=_ratio(annualized_excess, downside_deviation),
+        sortino_ratio=sortino_ratio,
         max_drawdown=max_drawdown(values),
         value_at_risk=value_at_risk,
         expected_shortfall=expected_shortfall,
+        sortino_reason=sortino_reason,
     )
 
 

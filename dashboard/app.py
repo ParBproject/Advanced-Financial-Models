@@ -549,7 +549,7 @@ def render_market() -> None:
     if not annualize:
         st.caption(
             prose(
-                f"This sample has {sample_periods} returns, so return, volatility, Sharpe, and Sortino "
+                f"This sample has {sample_periods} returns, so return, volatility, and Sharpe "
                 "are not annualized. "
                 f"The 3% risk-free rate is charged as 3% × {sample_periods} / {periods_per_year} "
                 "over the window."
@@ -579,6 +579,7 @@ def render_market() -> None:
     volatility_label = "Annualized volatility" if annualize else "Period volatility"
     sharpe_label = "Sharpe" if annualize else "Sharpe (not annualized)"
     sortino_label = "Sortino" if annualize else "Sortino (not annualized)"
+    show_sortino = performance.sortino_ratio is not None
     metrics = st.columns(4)
     metrics[0].metric("Cumulative return", percent(performance.cumulative_return))
     metrics[1].metric("Max drawdown", percent(performance.max_drawdown))
@@ -589,7 +590,10 @@ def render_market() -> None:
     metrics[3].metric(volatility_label, percent(performance.annualized_volatility))
     more = st.columns(4)
     more[0].metric(sharpe_label, f"{performance.sharpe_ratio:.2f}")
-    more[1].metric(sortino_label, f"{performance.sortino_ratio:.2f}")
+    if show_sortino:
+        more[1].metric(sortino_label, f"{performance.sortino_ratio:.2f}")
+    else:
+        more[1].metric("Sortino", "n/a", help=performance.sortino_reason)
     if show_tail_risk:
         more[2].metric("95% expected shortfall", percent(performance.expected_shortfall))
     else:
@@ -634,11 +638,19 @@ def render_market() -> None:
             f"95% VaR and expected shortfall need at least {TAIL_RISK_MIN_OBSERVATIONS} returns. "
             f"This sample has {sample_periods}, so those figures are not shown. "
         )
-    ratio_note = (
-        "Sharpe and Sortino are annualized with a 3% risk-free rate divided across periods per year. "
-        if annualize
-        else "Sharpe and Sortino use that scaled risk-free rate and are not annualized. "
-    )
+    if show_sortino:
+        ratio_note = (
+            "Sharpe and Sortino are annualized with a 3% risk-free rate divided across periods per year. "
+            if annualize
+            else "Sharpe and Sortino use that scaled risk-free rate and are not annualized. "
+        )
+    else:
+        ratio_note = (
+            "Sharpe is annualized with a 3% risk-free rate divided across periods per year. "
+            if annualize
+            else "Sharpe uses that scaled risk-free rate and is not annualized. "
+        )
+        ratio_note += f"Sortino is not shown: {performance.sortino_reason}. "
     st.caption(prose(tail_note + ratio_note + "The backtest charges 5 bps of one-way turnover."))
 
 
