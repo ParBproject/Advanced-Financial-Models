@@ -5,7 +5,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from .portfolio import AssetAllocation, PortfolioMetrics
+from .portfolio import AssetAllocation, PortfolioMetrics, sharpe_ratio
+from .validation import require_finite
 
 
 @dataclass(frozen=True)
@@ -102,6 +103,16 @@ def covariance_from_correlation(
     return np.outer(vols, vols) * corr
 
 
+def _require_stated_volatility(allocations: tuple[AssetAllocation, ...], covariance: np.ndarray) -> None:
+    """Reject a covariance whose diagonal disagrees with the stated asset vols."""
+    stated = np.asarray([asset.volatility for asset in allocations], dtype=float)
+    implied = np.sqrt(np.maximum(np.diag(covariance), 0.0))
+    if not np.allclose(stated, implied, rtol=1e-8, atol=1e-10):
+        raise ValueError(
+            "asset volatilities must match the square root of the covariance diagonal"
+        )
+
+
 def correlated_portfolio_metrics(
     assets: Iterable[AssetAllocation],
     covariance: Sequence[Sequence[float]] | np.ndarray,
@@ -115,6 +126,8 @@ def correlated_portfolio_metrics(
     total_weight = sum(asset.weight for asset in allocations)
     if abs(total_weight - 1.0) > 1e-9:
         raise ValueError("portfolio weights must sum to 1.0")
+    investment_amount = require_finite("investment amount", investment_amount)
+    risk_free_rate = require_finite("risk-free rate", risk_free_rate)
     if investment_amount < 0:
         raise ValueError("investment amount must be non-negative")
     if isinstance(horizon_years, bool) or not isinstance(horizon_years, int):
@@ -123,6 +136,7 @@ def correlated_portfolio_metrics(
         raise ValueError("horizon years must be a non-negative integer")
 
     cov = validate_covariance_matrix(covariance, len(allocations))
+    _require_stated_volatility(allocations, cov)
     weights = np.asarray([asset.weight for asset in allocations], dtype=float)
     returns = np.asarray([asset.expected_return for asset in allocations], dtype=float)
 
@@ -130,11 +144,7 @@ def correlated_portfolio_metrics(
     variance = float(weights @ cov @ weights)
     variance = max(variance, 0.0)
     volatility = float(np.sqrt(variance))
-    if volatility == 0.0:
-        excess_return = expected_return - risk_free_rate
-        sharpe = float("inf") if excess_return > 0 else 0.0
-    else:
-        sharpe = (expected_return - risk_free_rate) / volatility
+    sharpe = sharpe_ratio(expected_return, volatility, risk_free_rate)
 
     future_value = investment_amount * (1.0 + expected_return) ** horizon_years
     return PortfolioMetrics(
@@ -162,6 +172,8 @@ def simulate_long_only_portfolios(
         raise ValueError("n_portfolios must be at least 1")
 
     cov = validate_covariance_matrix(covariance, len(allocations))
+    _require_stated_volatility(allocations, cov)
+    require_finite("risk-free rate", risk_free_rate)
     expected_asset_returns = np.asarray(
         [asset.expected_return for asset in allocations], dtype=float
     )

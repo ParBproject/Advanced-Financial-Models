@@ -4,6 +4,8 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from math import sqrt
 
+from .validation import require_finite
+
 
 @dataclass(frozen=True)
 class AssetAllocation:
@@ -13,10 +15,32 @@ class AssetAllocation:
     weight: float
 
     def validate(self) -> None:
-        if self.volatility < 0:
+        if not str(self.name).strip():
+            raise ValueError("asset name must not be empty")
+        require_finite("asset expected return", self.expected_return)
+        volatility = require_finite("asset volatility", self.volatility)
+        weight = require_finite("asset weight", self.weight)
+        if volatility < 0:
             raise ValueError("asset volatility must be non-negative")
-        if not 0 <= self.weight <= 1:
+        if not 0 <= weight <= 1:
             raise ValueError("asset weights must be between 0 and 1")
+
+
+def sharpe_ratio(expected_return: float, volatility: float, risk_free_rate: float) -> float:
+    """Return excess return per unit of volatility.
+
+    A zero-volatility portfolio is a sure outcome. Its Sharpe ratio is
+    positive infinity when that outcome beats the risk-free rate, negative
+    infinity when it lags cash, and zero when the two returns are equal.
+    """
+    excess = expected_return - risk_free_rate
+    if volatility == 0.0:
+        if excess > 0.0:
+            return float("inf")
+        if excess < 0.0:
+            return float("-inf")
+        return 0.0
+    return excess / volatility
 
 
 @dataclass(frozen=True)
@@ -49,6 +73,8 @@ def portfolio_metrics(
     total_weight = sum(asset.weight for asset in allocations)
     if abs(total_weight - 1.0) > 1e-9:
         raise ValueError("portfolio weights must sum to 1.0")
+    investment_amount = require_finite("investment amount", investment_amount)
+    risk_free_rate = require_finite("risk-free rate", risk_free_rate)
     if investment_amount < 0:
         raise ValueError("investment amount must be non-negative")
     if isinstance(horizon_years, bool) or not isinstance(horizon_years, int):
@@ -63,10 +89,7 @@ def portfolio_metrics(
         (asset.weight * asset.volatility) ** 2 for asset in allocations
     )
     volatility = sqrt(variance)
-    if volatility == 0:
-        sharpe = float("inf") if expected_return > risk_free_rate else 0.0
-    else:
-        sharpe = (expected_return - risk_free_rate) / volatility
+    sharpe = sharpe_ratio(expected_return, volatility, risk_free_rate)
 
     future_value = investment_amount * (1.0 + expected_return) ** horizon_years
     return PortfolioMetrics(

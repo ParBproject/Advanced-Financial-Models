@@ -9,8 +9,8 @@ This repository combines an Excel decision-support workbook with a reproducible 
 3. Add or update tests for every calculation change.
 4. Run:
    ```bash
-   python -m pip install -e ".[dev]"
-   ruff check src tests examples
+   python -m pip install -e ".[dev,dashboard]"
+   ruff check src tests examples dashboard
    python -m unittest discover -s tests -v
    ```
 5. Open a pull request that explains the financial behavior being changed and why.

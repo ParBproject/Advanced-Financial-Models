@@ -57,7 +57,7 @@ HOW TO USE
    - Discount Rate for NPV (10% default) ⚠️ KEY ASSUMPTION
 
 2. **Adjust Specific Items**:
-   - Rent: Set in row 23 (currently $8,000/month)
+   - Rent: Set in row 22 (currently $8,000/month)
    - Capital Expenditures: Modify blue cells in row 25 (currently in months 2, 5, 9)
 
 3. **Analyze Results**:
@@ -68,7 +68,7 @@ HOW TO USE
 
 KEY METRICS EXPLAINED
 --------------------
-• **NPV of Cash Flows**: Present value of future cash flows discounted at 10%
+• **NPV of Cash Flows**: Present value of monthly net cash flows. The 10% annual discount rate is converted to an equivalent monthly rate before discounting.
 • **Average Monthly Net Cash Flow**: Mean of monthly cash flow changes
 • **Minimum Cash Balance**: Lowest cash point (watch for negative)
 • **Maximum Cash Balance**: Peak cash position
@@ -223,7 +223,7 @@ HOW TO USE
 
 3. **Analyze Portfolio Metrics** (Rows 20-24):
    - Portfolio Expected Return: Weighted average return
-   - Portfolio Risk: Weighted standard deviation (simplified model)
+   - Portfolio Risk: zero-correlation volatility
    - Sharpe Ratio: (Return - Risk-Free Rate) / Risk
    - Expected Portfolio Value (10Y): Future value projection
    - Expected Total Return (10Y): Absolute dollar gain
@@ -277,11 +277,11 @@ Current "Balanced" approach:
 - 15% Small Cap + 15% International (growth and diversification)
 - 10% Alternative investments (Real Estate + Commodities)
 
-Expected outcomes:
-- Portfolio Return: ~8.5% annually
-- Portfolio Risk: ~11% standard deviation
-- Sharpe Ratio: ~0.50 (moderate risk-adjusted return)
-- 10-Year Value: ~$2.27 million (on $1M investment)
+Expected outcomes for the baseline weights, from the zero-correlation formula:
+- Portfolio Return: 8.64% annually
+- Portfolio Risk: 6.82% standard deviation
+- Sharpe Ratio: 0.83 at a 3% risk-free rate
+- 10-Year Value: $2,290,327 on a $1,000,000 investment
 
 RISK CONSIDERATIONS
 ------------------
@@ -382,10 +382,10 @@ PORTFOLIO ALLOCATION METHODOLOGY
 
 • Risk-free rate: 3% (current 10-year Treasury approximation)
 
-• Portfolio risk calculation: Simplified model using weighted standard deviation
-  - Note: Professional models use covariance matrices to account for correlations
-  - This model assumes assets move independently (conservative assumption)
-  - True portfolio risk is typically lower due to diversification benefits
+• Portfolio risk calculation: zero-correlation volatility, the square root of the sum of squared weighted volatilities
+  - The headline cell uses that formula. An older version used the square root of the sum of weight times variance, which is not portfolio volatility
+  - The Python covariance layer adds an illustrative correlation matrix
+  - With that matrix, volatility is higher than the zero-correlation figure because the equity sleeves move together
 
 • Rebalancing: Not explicitly modeled but assumed annually
 

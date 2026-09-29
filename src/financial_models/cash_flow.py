@@ -4,6 +4,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from statistics import fmean
 
+from .validation import require_finite
+
 
 DEFAULT_CAPEX = {2: 15_000.0, 5: 15_000.0, 9: 15_000.0}
 
@@ -19,15 +21,22 @@ class CashFlowAssumptions:
     annual_discount_rate: float = 0.10
 
     def validate(self) -> None:
-        if self.starting_cash < 0 or self.revenue_month1 < 0:
+        starting_cash = require_finite("starting cash", self.starting_cash)
+        revenue = require_finite("revenue", self.revenue_month1)
+        growth = require_finite("monthly revenue growth", self.monthly_revenue_growth)
+        ratio = require_finite("operating expense ratio", self.operating_expense_ratio)
+        loan_payment = require_finite("monthly loan payment", self.monthly_loan_payment)
+        rent = require_finite("monthly rent", self.monthly_rent)
+        discount_rate = require_finite("annual discount rate", self.annual_discount_rate)
+        if starting_cash < 0 or revenue < 0:
             raise ValueError("starting cash and revenue must be non-negative")
-        if self.monthly_revenue_growth <= -1:
+        if growth <= -1:
             raise ValueError("monthly revenue growth must be greater than -100%")
-        if not 0 <= self.operating_expense_ratio <= 1:
+        if not 0 <= ratio <= 1:
             raise ValueError("operating expense ratio must be between 0 and 1")
-        if self.monthly_loan_payment < 0 or self.monthly_rent < 0:
+        if loan_payment < 0 or rent < 0:
             raise ValueError("fixed monthly outflows must be non-negative")
-        if self.annual_discount_rate < 0:
+        if discount_rate < 0:
             raise ValueError("annual discount rate must be non-negative")
 
 
@@ -73,6 +82,7 @@ def forecast_cash_flow(
     for month, amount in capex_schedule.items():
         if not isinstance(month, int) or month < 1 or month > months:
             raise ValueError("capex month keys must fall inside the forecast horizon")
+        amount = require_finite("capex amount", amount)
         if amount < 0:
             raise ValueError("capex amounts must be non-negative")
 

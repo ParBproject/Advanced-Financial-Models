@@ -1,3 +1,5 @@
+"""Streamlit decision board for the tested financial-model package."""
+
 from __future__ import annotations
 
 import numpy as np
@@ -11,12 +13,18 @@ from financial_models import (
     CreditStressScenario,
     Loan,
     approximate_efficient_frontier,
+    assess_loan,
     correlated_portfolio_metrics,
     covariance_from_correlation,
+    credit_book_memo_audit,
+    credit_concentration,
     forecast_cash_flow,
+    format_credit_book_decision,
     illustrative_correlation_matrix,
+    loans_from_credit_book,
     max_sharpe_portfolio,
     min_volatility_portfolio,
+    portfolio_metrics,
     simulate_long_only_portfolios,
     simulate_portfolio_terminal_values,
     stress_cash_flow,
@@ -24,54 +32,55 @@ from financial_models import (
     summarize_portfolio,
     workbook_balanced_portfolio,
 )
-
+from financial_models.charts import (
+    allocation_plotly,
+    cash_flow_plotly,
+    credit_ratings_plotly,
+    frontier_plotly,
+    monte_carlo_plotly,
+    stressed_cash_plotly,
+    wealth_plotly,
+)
+from financial_models.market_data import (
+    align_prices,
+    backtest_rebalanced_portfolio,
+    cumulative_wealth,
+    download_adjusted_close,
+    historical_risk_summary,
+    performance_summary,
+    portfolio_return_series,
+    simple_returns,
+    worked_example_prices,
+)
+from financial_models.theme import streamlit_css
 
 st.set_page_config(
     page_title="Advanced Financial Models",
-    page_icon="📊",
+    page_icon="▸",
     layout="wide",
+    initial_sidebar_state="collapsed",
 )
+st.markdown(streamlit_css(), unsafe_allow_html=True)
 
 
-def money(value: float) -> str:
-    return f"${value:,.0f}"
+def money(value: float, *, decimals: int = 0) -> str:
+    return f"${value:,.{decimals}f}"
 
 
 def percent(value: float) -> str:
     return f"{value:.2%}"
 
 
-def default_loans_frame() -> pd.DataFrame:
-    return pd.DataFrame(
-        [
-            {"Loan ID": "L-001", "Borrower": "Strong Co.", "Exposure": 100_000.0, "Credit Score": 780},
-            {"Loan ID": "L-002", "Borrower": "Mid Market", "Exposure": 150_000.0, "Credit Score": 620},
-            {"Loan ID": "L-003", "Borrower": "Growth Co.", "Exposure": 200_000.0, "Credit Score": 540},
-        ]
-    )
+def show(figure) -> None:
+    st.plotly_chart(figure, use_container_width=True, config={"displaylogo": False})
 
 
-def loans_from_frame(frame: pd.DataFrame) -> tuple[Loan, ...]:
-    loans: list[Loan] = []
-    for row in frame.itertuples(index=False, name=None):
-        loan_id, borrower, exposure, credit_score = row
-        loans.append(
-            Loan(
-                str(loan_id),
-                str(borrower),
-                float(exposure),
-                int(credit_score),
-            )
-        )
-    return tuple(loans)
-
-
-def baseline_portfolio_frame() -> pd.DataFrame:
+def portfolio_frame() -> pd.DataFrame:
     return pd.DataFrame(
         [
             {
                 "Asset": asset.name,
-                "Expected Return %": asset.expected_return * 100,
+                "Expected return %": asset.expected_return * 100,
                 "Volatility %": asset.volatility * 100,
                 "Weight %": asset.weight * 100,
             }
@@ -82,16 +91,15 @@ def baseline_portfolio_frame() -> pd.DataFrame:
 
 def assets_from_frame(frame: pd.DataFrame) -> tuple[AssetAllocation, ...]:
     raw_weights = frame["Weight %"].astype(float).to_numpy()
-    if np.any(raw_weights < 0):
-        raise ValueError("portfolio weights must be non-negative")
+    if not np.isfinite(raw_weights).all() or np.any(raw_weights < 0):
+        raise ValueError("portfolio weights must be finite and non-negative")
     total_weight = float(raw_weights.sum())
     if total_weight <= 0:
         raise ValueError("portfolio weights must have a positive total")
-
     normalized = raw_weights / total_weight
     assets: list[AssetAllocation] = []
     for position, row in enumerate(frame.itertuples(index=False, name=None)):
-        name, expected_return, volatility, _ = row
+        name, expected_return, volatility, _weight = row
         assets.append(
             AssetAllocation(
                 str(name),
@@ -103,26 +111,34 @@ def assets_from_frame(frame: pd.DataFrame) -> tuple[AssetAllocation, ...]:
     return tuple(assets)
 
 
-def cash_flow_table(assumptions: CashFlowAssumptions) -> tuple[pd.DataFrame, object]:
-    forecast = forecast_cash_flow(assumptions)
-    frame = pd.DataFrame(
-        [
-            {
-                "Month": period.month,
-                "Revenue": period.revenue,
-                "Net Cash Flow": period.net_cash_flow,
-                "Ending Cash": period.ending_cash,
-            }
-            for period in forecast.periods
-        ]
-    ).set_index("Month")
-    return frame, forecast
+def prices_from_upload(upload) -> pd.DataFrame:
+    frame = pd.read_csv(upload)
+    date_column = next(
+        (column for column in frame.columns if str(column).lower() in {"date", "datetime"}),
+        None,
+    )
+    if date_column is not None:
+        frame = frame.set_index(date_column)
+    frame.index = pd.to_datetime(frame.index)
+    frame = frame.sort_index()
+    return frame.apply(pd.to_numeric, errors="coerce")
+
+
+def render_header() -> None:
+    st.markdown('<p class="afm-kicker">Liquidity · Credit · Portfolio risk</p>', unsafe_allow_html=True)
+    st.title("Advanced Financial Models")
+    st.markdown('<div class="afm-rule"></div>', unsafe_allow_html=True)
+    st.caption(
+        "The board calls the tested package. It does not keep a second copy of the formulas."
+    )
 
 
 def render_overview() -> None:
     cash = forecast_cash_flow(CashFlowAssumptions())
-    loans = loans_from_frame(default_loans_frame())
+    loans = loans_from_credit_book()
     credit = summarize_portfolio(loans)
+    concentration = credit_concentration(loans)
+    audit = credit_book_memo_audit()
     assets = workbook_balanced_portfolio()
     covariance = covariance_from_correlation(
         [asset.volatility for asset in assets],
@@ -130,145 +146,152 @@ def render_overview() -> None:
     )
     portfolio = correlated_portfolio_metrics(assets, covariance)
 
-    st.subheader("Executive snapshot")
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("12-month ending cash", money(cash.periods[-1].ending_cash))
-    col2.metric("Credit expected loss", money(credit.total_expected_loss))
-    col3.metric("Portfolio expected return", percent(portfolio.expected_return))
-    col4.metric("Covariance-aware volatility", percent(portfolio.volatility))
+    columns = st.columns(4)
+    columns[0].metric("12-month ending cash", money(cash.periods[-1].ending_cash))
+    columns[1].metric("Credit expected loss", money(credit.total_expected_loss, decimals=2))
+    columns[2].metric("Borrower HHI", f"{concentration.herfindahl_hirschman_index:.6f}")
+    columns[3].metric("Covariance-aware volatility", percent(portfolio.volatility))
 
-    st.markdown(
-        "This dashboard uses the same tested Python models as the repository. "
-        "Change assumptions in the tabs below to compare liquidity, credit, and portfolio risk."
+    st.markdown(format_credit_book_decision(credit, concentration, audit))
+    show(cash_flow_plotly(cash))
+    st.caption(
+        "Cash flow uses the workbook assumptions. Credit uses the 1,000-loan book at a 45% LGD "
+        "and the score-band PD, not the file's PD_Score column. "
+        f"That column averages {audit.average_reported_pd:.2%}."
     )
-
-    overview = pd.DataFrame(
-        {
-            "Metric": [
-                "Cash-flow NPV",
-                "Expected-loss ratio",
-                "Portfolio Sharpe ratio",
-                "10-year projected value",
-            ],
-            "Value": [
-                money(cash.npv_of_net_cash_flows),
-                percent(credit.expected_loss_ratio),
-                f"{portfolio.sharpe_ratio:.2f}",
-                money(portfolio.future_value),
-            ],
-        }
-    )
-    st.dataframe(overview, hide_index=True, use_container_width=True)
 
 
 def render_cash_flow() -> None:
     st.subheader("Cash-flow forecast")
-    c1, c2, c3, c4 = st.columns(4)
-    starting_cash = c1.number_input("Starting cash", min_value=0.0, value=50_000.0, step=5_000.0)
-    revenue = c2.number_input("Month 1 revenue", min_value=0.0, value=100_000.0, step=5_000.0)
-    growth = c3.slider("Monthly revenue growth", -10.0, 15.0, 5.0, 0.5) / 100.0
-    opex = c4.slider("Operating expense ratio", 0.0, 100.0, 60.0, 1.0) / 100.0
-
+    controls = st.columns(4)
+    starting_cash = controls[0].number_input("Starting cash", min_value=0.0, value=50_000.0, step=5_000.0)
+    revenue = controls[1].number_input("Month 1 revenue", min_value=0.0, value=100_000.0, step=5_000.0)
+    growth = controls[2].slider("Monthly revenue growth", -10.0, 15.0, 5.0, 0.5) / 100.0
+    opex = controls[3].slider("Operating expense ratio", 0.0, 100.0, 60.0, 1.0) / 100.0
     assumptions = CashFlowAssumptions(
         starting_cash=starting_cash,
         revenue_month1=revenue,
         monthly_revenue_growth=growth,
         operating_expense_ratio=opex,
     )
-    frame, forecast = cash_flow_table(assumptions)
-
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Ending cash", money(forecast.periods[-1].ending_cash))
-    m2.metric("Cash-flow NPV", money(forecast.npv_of_net_cash_flows))
-    m3.metric("Minimum cash", money(forecast.minimum_cash_balance))
-    m4.metric("Average monthly FCF", money(forecast.average_monthly_net_cash_flow))
-
-    st.line_chart(frame[["Revenue", "Ending Cash"]])
+    forecast = forecast_cash_flow(assumptions)
+    metrics = st.columns(4)
+    metrics[0].metric("Ending cash", money(forecast.periods[-1].ending_cash))
+    metrics[1].metric("NPV of net cash flows", money(forecast.npv_of_net_cash_flows))
+    metrics[2].metric("Minimum cash", money(forecast.minimum_cash_balance))
+    metrics[3].metric("Average monthly net cash flow", money(forecast.average_monthly_net_cash_flow))
+    show(cash_flow_plotly(forecast))
+    st.caption("NPV discounts each month at the effective monthly rate from the 10% annual assumption.")
+    frame = pd.DataFrame(
+        {
+            "Month": [period.month for period in forecast.periods],
+            "Revenue": [period.revenue for period in forecast.periods],
+            "Net cash flow": [period.net_cash_flow for period in forecast.periods],
+            "Ending cash": [period.ending_cash for period in forecast.periods],
+        }
+    )
     st.dataframe(
-        frame.style.format("${:,.0f}"),
+        frame,
+        hide_index=True,
         use_container_width=True,
+        column_config={
+            "Revenue": st.column_config.NumberColumn(format="$%.0f"),
+            "Net cash flow": st.column_config.NumberColumn(format="$%.0f"),
+            "Ending cash": st.column_config.NumberColumn(format="$%.0f"),
+        },
     )
 
 
 def render_credit() -> None:
-    st.subheader("Credit expected loss")
-    lgd = st.slider("Loss given default", 0.0, 100.0, 45.0, 1.0) / 100.0
-    edited = st.data_editor(
-        default_loans_frame(),
-        hide_index=True,
-        use_container_width=True,
-        num_rows="fixed",
-        column_config={
-            "Exposure": st.column_config.NumberColumn(min_value=0.0, format="$%.0f"),
-            "Credit Score": st.column_config.NumberColumn(min_value=300, max_value=850, step=1),
-        },
-        key="credit_editor",
+    st.subheader("Credit book")
+    st.caption(
+        "1,000 loans from data/portfolio_data.csv. Borrower is Customer_ID. "
+        "Expected loss uses the score-band PD."
+    )
+    loss_given_default = st.slider("Loss given default", 0.0, 100.0, 45.0, 1.0) / 100.0
+    loans = loans_from_credit_book()
+    summary = summarize_portfolio(loans, loss_given_default=loss_given_default)
+    concentration = credit_concentration(loans)
+    audit = credit_book_memo_audit()
+    checked = assess_loan(
+        Loan("L-001", "Guide example", 100_000.0, 620),
+        loss_given_default=loss_given_default,
     )
 
-    try:
-        loans = loans_from_frame(edited)
-        summary = summarize_portfolio(loans, loss_given_default=lgd)
-    except (TypeError, ValueError) as exc:
-        st.error(str(exc))
-        return
-
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Total exposure", money(summary.total_exposure))
-    c2.metric("Expected loss", money(summary.total_expected_loss))
-    c3.metric("Expected-loss ratio", percent(summary.expected_loss_ratio))
-    c4.metric("Average credit score", f"{summary.average_credit_score:.0f}")
-
+    metrics = st.columns(4)
+    metrics[0].metric("Exposure", money(summary.total_exposure, decimals=2))
+    metrics[1].metric("Expected loss", money(summary.total_expected_loss, decimals=2))
+    metrics[2].metric("Expected-loss ratio", percent(summary.expected_loss_ratio))
+    metrics[3].metric("Effective borrowers", f"{concentration.effective_borrower_count:.1f}")
+    second = st.columns(4)
+    second[0].metric("Borrower HHI", f"{concentration.herfindahl_hirschman_index:.6f}")
+    second[1].metric("Largest borrower", percent(concentration.largest_borrower_share))
+    second[2].metric("High-risk loans", f"{summary.high_risk_count}")
+    second[3].metric(
+        "Guide check, score 620",
+        money(checked.expected_loss, decimals=2),
+        help="100,000 exposure times the 15% band PD times the selected LGD.",
+    )
+    st.markdown(format_credit_book_decision(summary, concentration, audit))
+    show(credit_ratings_plotly(summary, concentration))
     rows = pd.DataFrame(
         [
             {
                 "Loan ID": result.loan.loan_id,
-                "Borrower": result.loan.borrower,
                 "Exposure": result.loan.exposure,
+                "Credit score": result.loan.credit_score,
                 "PD": result.probability_of_default,
                 "LGD": result.loss_given_default,
-                "Expected Loss": result.expected_loss,
-                "Risk Rating": result.risk_rating,
+                "Expected loss": result.expected_loss,
+                "Rating": result.risk_rating,
             }
             for result in summary.loans
         ]
     )
     st.dataframe(
-        rows.style.format(
-            {
-                "Exposure": "${:,.0f}",
-                "PD": "{:.1%}",
-                "LGD": "{:.1%}",
-                "Expected Loss": "${:,.0f}",
-            }
-        ),
+        rows,
         hide_index=True,
         use_container_width=True,
+        height=360,
+        column_config={
+            "Exposure": st.column_config.NumberColumn(format="$%.2f"),
+            "PD": st.column_config.NumberColumn(format="%.1%"),
+            "LGD": st.column_config.NumberColumn(format="%.1%"),
+            "Expected loss": st.column_config.NumberColumn(format="$%.2f"),
+        },
     )
 
 
 def render_portfolio() -> None:
-    st.subheader("Covariance-aware portfolio analytics")
-    st.caption("Edit expected returns, volatility, or weights. Weights are normalized to 100% for analysis.")
+    st.subheader("Portfolio")
+    st.caption(
+        "The correlation matrix is the bundled one-factor illustration for these six sleeves. "
+        "It is not an estimate from market history. Weights that do not sum to 100% are rescaled, "
+        "and the rescale is shown below."
+    )
     edited = st.data_editor(
-        baseline_portfolio_frame(),
+        portfolio_frame(),
         hide_index=True,
         use_container_width=True,
         num_rows="fixed",
         key="portfolio_editor",
     )
-    n_portfolios = st.slider("Simulated portfolios", 1_000, 20_000, 6_000, 1_000)
-
+    n_portfolios = st.slider("Simulated portfolios", 1_000, 20_000, 8_000, 1_000)
+    weight_sum = float(edited["Weight %"].sum())
+    if abs(weight_sum - 100.0) > 0.05:
+        st.warning(f"Entered weights sum to {weight_sum:.2f}%. Analysis uses weights rescaled to 100%.")
     try:
         assets = assets_from_frame(edited)
         covariance = covariance_from_correlation(
             [asset.volatility for asset in assets],
             illustrative_correlation_matrix(),
         )
-        metrics = correlated_portfolio_metrics(assets, covariance)
+        zero_correlation = portfolio_metrics(assets)
+        aware = correlated_portfolio_metrics(assets, covariance)
         simulation = simulate_long_only_portfolios(
             assets,
             covariance,
-            n_portfolios=n_portfolios,
+            n_portfolios=int(n_portfolios),
             random_state=42,
         )
     except (TypeError, ValueError) as exc:
@@ -278,71 +301,69 @@ def render_portfolio() -> None:
     max_sharpe = max_sharpe_portfolio(simulation)
     min_vol = min_volatility_portfolio(simulation)
     frontier = approximate_efficient_frontier(simulation, max_points=20)
-
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Expected return", percent(metrics.expected_return))
-    c2.metric("Volatility", percent(metrics.volatility))
-    c3.metric("Sharpe ratio", f"{metrics.sharpe_ratio:.2f}")
-    c4.metric("10-year value", money(metrics.future_value))
-
-    sample = pd.DataFrame(
-        {
-            "Volatility": simulation.volatilities,
-            "Expected Return": simulation.expected_returns,
-            "Sharpe": simulation.sharpe_ratios,
-        }
-    )
-    st.scatter_chart(sample, x="Volatility", y="Expected Return", size=12)
-
-    frontier_frame = pd.DataFrame(
-        {
-            "Volatility": [point.volatility for point in frontier],
-            "Expected Return": [point.expected_return for point in frontier],
-        }
-    ).set_index("Volatility")
-    st.markdown("**Approximate efficient frontier**")
-    st.line_chart(frontier_frame)
-
+    metrics = st.columns(4)
+    metrics[0].metric("Expected return", percent(aware.expected_return))
+    metrics[1].metric("Zero-correlation volatility", percent(zero_correlation.volatility))
+    metrics[2].metric("Covariance-aware volatility", percent(aware.volatility))
+    metrics[3].metric("Sharpe ratio", f"{aware.sharpe_ratio:.2f}")
+    left, right = st.columns(2)
+    with left:
+        show(allocation_plotly(assets))
+    with right:
+        show(
+            frontier_plotly(
+                simulation.volatilities,
+                simulation.expected_returns,
+                simulation.sharpe_ratios,
+                [point.volatility for point in frontier],
+                [point.expected_return for point in frontier],
+                aware.volatility,
+                aware.expected_return,
+            )
+        )
     best = pd.DataFrame(
         [
             {
-                "Portfolio": "Max Sharpe",
-                "Expected Return": max_sharpe.expected_return,
+                "Portfolio": "Workbook mix",
+                "Expected return": aware.expected_return,
+                "Volatility": aware.volatility,
+                "Sharpe": aware.sharpe_ratio,
+            },
+            {
+                "Portfolio": "Highest sampled Sharpe",
+                "Expected return": max_sharpe.expected_return,
                 "Volatility": max_sharpe.volatility,
                 "Sharpe": max_sharpe.sharpe_ratio,
             },
             {
-                "Portfolio": "Minimum Volatility",
-                "Expected Return": min_vol.expected_return,
+                "Portfolio": "Lowest sampled volatility",
+                "Expected return": min_vol.expected_return,
                 "Volatility": min_vol.volatility,
                 "Sharpe": min_vol.sharpe_ratio,
             },
         ]
     )
     st.dataframe(
-        best.style.format(
-            {
-                "Expected Return": "{:.2%}",
-                "Volatility": "{:.2%}",
-                "Sharpe": "{:.2f}",
-            }
-        ),
+        best,
         hide_index=True,
         use_container_width=True,
+        column_config={
+            "Expected return": st.column_config.NumberColumn(format="%.2%"),
+            "Volatility": st.column_config.NumberColumn(format="%.2%"),
+            "Sharpe": st.column_config.NumberColumn(format="%.2f"),
+        },
     )
 
 
 def render_stress() -> None:
-    st.subheader("Stress testing and Monte Carlo")
+    st.subheader("Stress and Monte Carlo")
     left, right = st.columns(2)
-
     with left:
-        st.markdown("### Liquidity stress")
+        st.markdown("**Liquidity**")
         revenue_multiplier = st.slider("Revenue level", 50.0, 120.0, 80.0, 5.0) / 100.0
         growth_delta = st.slider("Monthly growth shock", -10.0, 5.0, -3.0, 0.5) / 100.0
-        opex_delta = st.slider("OpEx ratio shock", -10.0, 30.0, 10.0, 1.0) / 100.0
+        opex_delta = st.slider("Operating-expense shock", -10.0, 30.0, 10.0, 1.0) / 100.0
         fixed_multiplier = st.slider("Fixed-cost multiplier", 80.0, 150.0, 110.0, 5.0) / 100.0
-
         try:
             cash_stress = stress_cash_flow(
                 CashFlowAssumptions(),
@@ -354,16 +375,20 @@ def render_stress() -> None:
                     fixed_cost_multiplier=fixed_multiplier,
                 ),
             )
-            st.metric("Ending cash impact", money(cash_stress.ending_cash_change))
-            st.metric("NPV impact", money(cash_stress.npv_change))
         except ValueError as exc:
             st.error(str(exc))
+        else:
+            impact = st.columns(2)
+            impact[0].metric("Ending cash impact", money(cash_stress.ending_cash_change))
+            impact[1].metric("NPV impact", money(cash_stress.npv_change))
+            show(stressed_cash_plotly(cash_stress.baseline, cash_stress.stressed, "Stressed"))
 
-        st.markdown("### Credit stress")
+        st.markdown("**Credit**")
+        st.caption("PD and LGD multipliers apply to the 1,000-loan book and are capped at 100%.")
         pd_multiplier = st.slider("PD multiplier", 0.5, 4.0, 1.75, 0.25)
         lgd_multiplier = st.slider("LGD multiplier", 0.5, 2.5, 1.25, 0.25)
         credit_stress = stress_credit_portfolio(
-            loans_from_frame(default_loans_frame()),
+            loans_from_credit_book(),
             CreditStressScenario(
                 "Dashboard credit stress",
                 pd_multiplier=pd_multiplier,
@@ -372,15 +397,15 @@ def render_stress() -> None:
         )
         st.metric(
             "Stressed expected loss",
-            money(credit_stress.stressed_expected_loss),
-            delta=money(credit_stress.expected_loss_change),
+            money(credit_stress.stressed_expected_loss, decimals=0),
+            delta=money(credit_stress.expected_loss_change, decimals=0),
             delta_color="inverse",
         )
 
     with right:
-        st.markdown("### Portfolio Monte Carlo")
+        st.markdown("**Terminal wealth**")
         horizon = st.slider("Horizon (years)", 1, 30, 10)
-        simulations = st.slider("Monte Carlo paths", 1_000, 25_000, 10_000, 1_000)
+        simulations = st.slider("Monte Carlo paths", 1_000, 20_000, 8_000, 1_000)
         assets = workbook_balanced_portfolio()
         covariance = covariance_from_correlation(
             [asset.volatility for asset in assets],
@@ -389,35 +414,162 @@ def render_stress() -> None:
         result = simulate_portfolio_terminal_values(
             assets,
             covariance,
-            horizon_years=horizon,
-            n_simulations=simulations,
+            horizon_years=int(horizon),
+            n_simulations=int(simulations),
             random_state=42,
         )
-
-        c1, c2 = st.columns(2)
-        c1.metric("Median terminal value", money(result.median_terminal_value))
-        c2.metric("Probability of loss", percent(result.probability_of_loss))
-        c3, c4 = st.columns(2)
-        c3.metric("5th percentile", money(result.percentile_05))
-        c4.metric("95th percentile", money(result.percentile_95))
-
-        counts, edges = np.histogram(result.terminal_values, bins=30)
-        histogram = pd.DataFrame(
-            {
-                "Terminal Value": (edges[:-1] + edges[1:]) / 2.0,
-                "Paths": counts,
-            }
-        ).set_index("Terminal Value")
-        st.bar_chart(histogram)
+        terminal = st.columns(2)
+        terminal[0].metric("Median terminal value", money(result.median_terminal_value))
+        terminal[1].metric("Probability of loss", percent(result.probability_of_loss))
+        tails = st.columns(2)
+        tails[0].metric("5th percentile", money(result.percentile_05))
+        tails[1].metric("95th percentile", money(result.percentile_95))
+        show(monte_carlo_plotly(result))
+        st.caption("Loss means terminal value below the $1,000,000 starting investment.")
 
 
-st.title("Advanced Financial Models")
-st.caption("Excel-backed financial modeling with reproducible Python analytics")
+def render_market() -> None:
+    st.subheader("Market risk")
+    st.caption(
+        "Upload adjusted closes, run the worked example, or download with yfinance. "
+        "The worked example is a constructed price path, not a market history. "
+        "Missing prices are dropped, not filled forward."
+    )
+    source = st.radio(
+        "Price source",
+        ["Worked example", "Upload CSV", "Download adjusted closes"],
+        horizontal=True,
+    )
+    prices = None
+    if source == "Worked example":
+        prices = worked_example_prices()
+    elif source == "Upload CSV":
+        upload = st.file_uploader("CSV with a date column and one price column per asset", type="csv")
+        if upload is not None:
+            try:
+                prices = align_prices(prices_from_upload(upload))
+            except (TypeError, ValueError) as exc:
+                st.error(str(exc))
+                return
+    else:
+        tickers = st.text_input("Tickers", "SPY QQQ TLT GLD")
+        start = st.text_input("Start date", "2020-01-01")
+        if st.button("Download"):
+            try:
+                prices = download_adjusted_close(tickers.split(), start=start)
+                st.session_state["downloaded_prices"] = prices
+            except (ImportError, TypeError, ValueError) as exc:
+                st.error(str(exc))
+                return
+        prices = st.session_state.get("downloaded_prices")
 
-overview_tab, cash_tab, credit_tab, portfolio_tab, stress_tab = st.tabs(
-    ["Overview", "Cash Flow", "Credit Risk", "Portfolio", "Stress & Monte Carlo"]
+    if prices is None:
+        st.info("Choose a price source to calculate returns, drawdown, VaR, and a rebalanced backtest.")
+        return
+
+    try:
+        summary = historical_risk_summary(prices, periods_per_year=252)
+        returns = simple_returns(prices)
+    except (TypeError, ValueError) as exc:
+        st.error(str(exc))
+        return
+
+    columns = list(prices.columns)
+    share = round(1.0 / len(columns), 2)
+    default_weights = [share] * (len(columns) - 1)
+    default_weights.append(round(1.0 - share * (len(columns) - 1), 2))
+    weight_inputs = st.columns(len(columns))
+    weights = []
+    for column, weight_input, default in zip(columns, weight_inputs, default_weights, strict=True):
+        weights.append(
+            weight_input.number_input(
+                str(column),
+                min_value=0.0,
+                max_value=1.0,
+                value=float(default),
+                step=0.05,
+                format="%.2f",
+            )
+        )
+    weight_total = float(sum(weights))
+    if abs(weight_total - 1.0) > 1e-9:
+        st.warning(f"Weights sum to {weight_total:.2f}. Rescale them to 1.00 to run the backtest.")
+        return
+
+    sample_periods = len(returns)
+    default_periods = 252 if sample_periods >= 60 else sample_periods
+    periods_per_year = int(
+        st.number_input(
+            "Periods per year",
+            min_value=1,
+            value=default_periods,
+            step=1,
+            key=f"periods-{source}-{sample_periods}",
+            help="Short samples default to one period per observation so CAGR is the holding-period return.",
+        )
+    )
+    if sample_periods < 60:
+        st.caption(
+            f"This sample has {sample_periods} returns. "
+            "The annualization factor stays on the sample length unless you change periods per year."
+        )
+    portfolio_returns = portfolio_return_series(returns, weights)
+    performance = performance_summary(
+        portfolio_returns,
+        periods_per_year=periods_per_year,
+        risk_free_rate=0.03,
+    )
+    backtest = backtest_rebalanced_portfolio(
+        prices,
+        weights,
+        rebalance_every=max(1, len(returns) // 2),
+        transaction_cost_bps=5.0,
+    )
+    metrics = st.columns(4)
+    metrics[0].metric("Cumulative return", percent(performance.cumulative_return))
+    metrics[1].metric("Max drawdown", percent(performance.max_drawdown))
+    metrics[2].metric("95% historical VaR", percent(performance.value_at_risk))
+    metrics[3].metric("Annualized volatility", percent(performance.annualized_volatility))
+    more = st.columns(4)
+    more[0].metric("Sharpe", f"{performance.sharpe_ratio:.2f}")
+    more[1].metric("Sortino", f"{performance.sortino_ratio:.2f}")
+    more[2].metric("95% expected shortfall", percent(performance.expected_shortfall))
+    more[3].metric("Backtest ending wealth", f"{backtest.wealth.iloc[-1]:.4f}")
+
+    wealth = {"Portfolio": cumulative_wealth(portfolio_returns)}
+    for column in columns:
+        wealth[str(column)] = cumulative_wealth(returns[column])
+    show(wealth_plotly(list(portfolio_returns.index), wealth, title="Growth of $1"))
+    risk = pd.DataFrame(
+        {
+            "Asset": summary.annualized_volatility.index.astype(str),
+            "Annualized return": summary.annualized_returns.to_numpy(),
+            "Annualized volatility": summary.annualized_volatility.to_numpy(),
+            "Max drawdown": summary.max_drawdown.to_numpy(),
+        }
+    )
+    st.dataframe(
+        risk,
+        hide_index=True,
+        use_container_width=True,
+        column_config={
+            "Annualized return": st.column_config.NumberColumn(format="%.2%"),
+            "Annualized volatility": st.column_config.NumberColumn(format="%.2%"),
+            "Max drawdown": st.column_config.NumberColumn(format="%.2%"),
+        },
+    )
+    st.caption(
+        "VaR and expected shortfall are per-period loss fractions from the worst "
+        "ceil((1 − 95%) × n) returns. A negative loss means that point was a gain. "
+        "Sharpe and Sortino use a 3% risk-free rate on the same per-period threshold. "
+        "The backtest charges 5 bps of one-way turnover."
+    )
+
+
+render_header()
+overview_tab, cash_tab, credit_tab, portfolio_tab, stress_tab, market_tab = st.tabs(
+    ["Overview", "Cash flow", "Credit book", "Portfolio", "Stress", "Market risk"]
 )
-
 with overview_tab:
     render_overview()
 with cash_tab:
@@ -428,8 +580,10 @@ with portfolio_tab:
     render_portfolio()
 with stress_tab:
     render_stress()
+with market_tab:
+    render_market()
 
 st.divider()
 st.caption(
-    "Educational portfolio project only — not investment, lending, accounting, or financial advice."
+    "Educational portfolio project. Not investment, lending, accounting, or financial advice."
 )
