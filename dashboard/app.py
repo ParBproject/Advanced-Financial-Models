@@ -139,7 +139,7 @@ def render_overview() -> None:
 
     st.markdown(
         "This dashboard uses the same tested Python models as the repository. "
-        "Change assumptions in the tabs below to compare liquidity, credit, and portfolio risk."
+        "Overview figures use the workbook baseline. Edits in the other tabs do not change this page."
     )
 
     overview = pd.DataFrame(
@@ -158,7 +158,7 @@ def render_overview() -> None:
             ],
         }
     )
-    st.dataframe(overview, hide_index=True, use_container_width=True)
+    st.dataframe(overview, hide_index=True, width="stretch")
 
 
 def render_cash_flow() -> None:
@@ -185,8 +185,13 @@ def render_cash_flow() -> None:
 
     st.line_chart(frame[["Revenue", "Ending Cash"]])
     st.dataframe(
-        frame.style.format("${:,.0f}"),
-        use_container_width=True,
+        frame,
+        width="stretch",
+        column_config={
+            "Revenue": st.column_config.NumberColumn(format="$%,.0f"),
+            "Net Cash Flow": st.column_config.NumberColumn(format="$%,.0f"),
+            "Ending Cash": st.column_config.NumberColumn(format="$%,.0f"),
+        },
     )
 
 
@@ -196,10 +201,10 @@ def render_credit() -> None:
     edited = st.data_editor(
         default_loans_frame(),
         hide_index=True,
-        use_container_width=True,
+        width="stretch",
         num_rows="fixed",
         column_config={
-            "Exposure": st.column_config.NumberColumn(min_value=0.0, format="$%.0f"),
+            "Exposure": st.column_config.NumberColumn(min_value=0.0, format="$%,.0f"),
             "Credit Score": st.column_config.NumberColumn(min_value=300, max_value=850, step=1),
         },
         key="credit_editor",
@@ -233,30 +238,39 @@ def render_credit() -> None:
         ]
     )
     st.dataframe(
-        rows.style.format(
-            {
-                "Exposure": "${:,.0f}",
-                "PD": "{:.1%}",
-                "LGD": "{:.1%}",
-                "Expected Loss": "${:,.0f}",
-            }
-        ),
+        rows,
         hide_index=True,
-        use_container_width=True,
+        width="stretch",
+        column_config={
+            "Exposure": st.column_config.NumberColumn(format="$%,.0f"),
+            "PD": st.column_config.NumberColumn(format="percent"),
+            "LGD": st.column_config.NumberColumn(format="percent"),
+            "Expected Loss": st.column_config.NumberColumn(format="$%,.0f"),
+        },
     )
 
 
 def render_portfolio() -> None:
     st.subheader("Covariance-aware portfolio analytics")
-    st.caption("Edit expected returns, volatility, or weights. Weights are normalized to 100% for analysis.")
+    st.caption(
+        "Edit expected returns, volatility, or weights. Weights that do not sum to 100% "
+        "are rescaled. Risk uses the illustrative six-asset correlation in this row order."
+    )
     edited = st.data_editor(
         baseline_portfolio_frame(),
         hide_index=True,
-        use_container_width=True,
+        width="stretch",
         num_rows="fixed",
         key="portfolio_editor",
     )
     n_portfolios = st.slider("Simulated portfolios", 1_000, 20_000, 6_000, 1_000)
+
+    raw_weight_total = float(edited["Weight %"].astype(float).sum())
+    if abs(raw_weight_total - 100.0) > 0.05:
+        st.warning(
+            f"Weights sum to {raw_weight_total:.2f}%, so they were rescaled to 100% "
+            "before the risk calculation."
+        )
 
     try:
         assets = assets_from_frame(edited)
@@ -320,20 +334,20 @@ def render_portfolio() -> None:
         ]
     )
     st.dataframe(
-        best.style.format(
-            {
-                "Expected Return": "{:.2%}",
-                "Volatility": "{:.2%}",
-                "Sharpe": "{:.2f}",
-            }
-        ),
+        best,
         hide_index=True,
-        use_container_width=True,
+        width="stretch",
+        column_config={
+            "Expected Return": st.column_config.NumberColumn(format="percent"),
+            "Volatility": st.column_config.NumberColumn(format="percent"),
+            "Sharpe": st.column_config.NumberColumn(format="%.2f"),
+        },
     )
 
 
 def render_stress() -> None:
     st.subheader("Stress testing and Monte Carlo")
+    st.caption("These scenarios start from the workbook baseline, not from edits in the other tabs.")
     left, right = st.columns(2)
 
     with left:
