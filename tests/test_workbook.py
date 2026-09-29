@@ -65,6 +65,13 @@ class WorkbookFormulaTests(unittest.TestCase):
         self.assertNotIn("weighted standard deviation", shared)
         self.assertIn("equivalent monthly rate", shared)
         self.assertNotIn("IRR", shared)
+        self.assertIn(
+            "IF, SUM, SUMPRODUCT, SQRT, NPV, COUNTIF, COUNTA, AVERAGE, MIN, MAX",
+            shared,
+        )
+        self.assertNotIn("SUMIFS", shared)
+        self.assertNotIn("XLOOKUP", shared)
+        self.assertNotIn("STDEV", shared)
 
 
 if __name__ == "__main__":

@@ -42,7 +42,6 @@ from financial_models.charts import (
     wealth_plotly,
 )
 from financial_models.market_data import (
-    TAIL_RISK_MIN_OBSERVATIONS,
     align_prices,
     annualize_sample,
     backtest_rebalanced_portfolio,
@@ -545,7 +544,6 @@ def render_market() -> None:
         )
     )
     annualize = annualize_sample(sample_periods)
-    show_tail_risk = sample_periods >= TAIL_RISK_MIN_OBSERVATIONS
     if not annualize:
         st.caption(
             prose(
@@ -580,13 +578,14 @@ def render_market() -> None:
     sharpe_label = "Sharpe" if annualize else "Sharpe (not annualized)"
     sortino_label = "Sortino" if annualize else "Sortino (not annualized)"
     show_sortino = performance.sortino_ratio is not None
+    show_tail_risk = performance.value_at_risk is not None
     metrics = st.columns(4)
     metrics[0].metric("Cumulative return", percent(performance.cumulative_return))
     metrics[1].metric("Max drawdown", percent(performance.max_drawdown))
     if show_tail_risk:
         metrics[2].metric("95% historical VaR", percent(performance.value_at_risk))
     else:
-        metrics[2].metric("95% historical VaR", "n/a")
+        metrics[2].metric("95% historical VaR", "n/a", help=performance.tail_risk_reason)
     metrics[3].metric(volatility_label, percent(performance.annualized_volatility))
     more = st.columns(4)
     more[0].metric(sharpe_label, f"{performance.sharpe_ratio:.2f}")
@@ -597,7 +596,7 @@ def render_market() -> None:
     if show_tail_risk:
         more[2].metric("95% expected shortfall", percent(performance.expected_shortfall))
     else:
-        more[2].metric("95% expected shortfall", "n/a")
+        more[2].metric("95% expected shortfall", "n/a", help=performance.tail_risk_reason)
     more[3].metric("Backtest ending wealth", f"{backtest.wealth.iloc[-1]:.4f}")
 
     wealth = {"Portfolio": cumulative_wealth(portfolio_returns)}
@@ -635,8 +634,8 @@ def render_market() -> None:
         )
     else:
         tail_note = (
-            f"95% VaR and expected shortfall need at least {TAIL_RISK_MIN_OBSERVATIONS} returns. "
-            f"This sample has {sample_periods}, so those figures are not shown. "
+            "95% VaR and expected shortfall are not shown: "
+            f"{performance.tail_risk_reason}. "
         )
     if show_sortino:
         ratio_note = (

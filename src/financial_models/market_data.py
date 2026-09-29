@@ -33,7 +33,8 @@ class PerformanceSummary:
 
     ``value_at_risk`` and ``expected_shortfall`` are per-period loss fractions,
     not annualized figures. Positive means a loss. A negative value means that
-    point in the distribution was a gain.
+    point in the distribution was a gain. Both are ``None`` when the sample
+    has fewer than 20 returns; ``tail_risk_reason`` then says why.
     """
 
     cumulative_return: float
@@ -42,9 +43,10 @@ class PerformanceSummary:
     sharpe_ratio: float
     sortino_ratio: float | None
     max_drawdown: float
-    value_at_risk: float
-    expected_shortfall: float
+    value_at_risk: float | None
+    expected_shortfall: float | None
     sortino_reason: str | None = None
+    tail_risk_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -315,6 +317,11 @@ def performance_summary(
     or fewer than 3 returns fall below the per-period risk-free rate.
     ``sortino_reason`` then says which gate failed. One or two shortfalls are
     not enough to estimate downside deviation.
+
+    ``value_at_risk`` and ``expected_shortfall`` are ``None`` below 20
+    returns, with the reason in ``tail_risk_reason``. The lower-level
+    ``historical_var_expected_shortfall`` still evaluates a short sample when
+    called directly.
     """
     periods_per_year = _validate_periods_per_year(periods_per_year)
     if not isinstance(annualize, bool):
@@ -351,10 +358,19 @@ def performance_summary(
         downside_count=downside_count,
     )
 
-    value_at_risk, expected_shortfall = historical_var_expected_shortfall(
-        values,
-        confidence=confidence,
-    )
+    if values.size < TAIL_RISK_MIN_OBSERVATIONS:
+        value_at_risk = None
+        expected_shortfall = None
+        tail_risk_reason = (
+            f"needs at least {TAIL_RISK_MIN_OBSERVATIONS} returns "
+            f"(this sample has {int(values.size)})"
+        )
+    else:
+        value_at_risk, expected_shortfall = historical_var_expected_shortfall(
+            values,
+            confidence=confidence,
+        )
+        tail_risk_reason = None
     return PerformanceSummary(
         cumulative_return=cumulative_return,
         cagr=cagr,
@@ -365,6 +381,7 @@ def performance_summary(
         value_at_risk=value_at_risk,
         expected_shortfall=expected_shortfall,
         sortino_reason=sortino_reason,
+        tail_risk_reason=tail_risk_reason,
     )
 
 
