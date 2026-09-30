@@ -9,3 +9,9 @@ Thumbs.db
 *.tmp
 *.swp
 ~$*
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/

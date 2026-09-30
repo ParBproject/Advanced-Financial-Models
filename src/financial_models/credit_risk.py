@@ -4,6 +4,8 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from statistics import fmean
 
+from .validation import require_credit_score, require_finite, require_probability
+
 
 @dataclass(frozen=True)
 class Loan:
@@ -13,10 +15,12 @@ class Loan:
     credit_score: int
 
     def validate(self) -> None:
-        if self.exposure < 0:
+        if not str(self.loan_id).strip() or not str(self.borrower).strip():
+            raise ValueError("loan id and borrower must not be empty")
+        exposure = require_finite("loan exposure", self.exposure)
+        if exposure < 0:
             raise ValueError("loan exposure must be non-negative")
-        if not 300 <= self.credit_score <= 850:
-            raise ValueError("credit score must be between 300 and 850")
+        require_credit_score(self.credit_score)
 
 
 @dataclass(frozen=True)
@@ -42,8 +46,7 @@ class PortfolioCreditSummary:
 
 def probability_of_default(credit_score: int) -> float:
     """Map a FICO-style credit score to the workbook's documented PD bands."""
-    if not 300 <= credit_score <= 850:
-        raise ValueError("credit score must be between 300 and 850")
+    credit_score = require_credit_score(credit_score)
     if credit_score >= 800:
         return 0.01
     if credit_score >= 750:
@@ -62,19 +65,23 @@ def probability_of_default(credit_score: int) -> float:
 
 
 def risk_rating(probability: float) -> str:
-    if not 0 <= probability <= 1:
-        raise ValueError("probability must be between 0 and 1")
-    if probability <= 0.04:
-        return "Low"
-    if probability <= 0.15:
+    """Rate a default probability using the workbook thresholds.
+
+    The loan sheet labels PD >= 20% as High and PD >= 7% as Medium. The
+    score-band table lands on the same labels, because its medium bands are
+    8% and 15% and its high bands start at 25%.
+    """
+    probability = require_probability("probability", probability)
+    if probability >= 0.20:
+        return "High"
+    if probability >= 0.07:
         return "Medium"
-    return "High"
+    return "Low"
 
 
 def assess_loan(loan: Loan, *, loss_given_default: float = 0.45) -> LoanRiskResult:
     loan.validate()
-    if not 0 <= loss_given_default <= 1:
-        raise ValueError("loss given default must be between 0 and 1")
+    require_probability("loss given default", loss_given_default)
 
     pd = probability_of_default(loan.credit_score)
     expected_loss = loan.exposure * pd * loss_given_default

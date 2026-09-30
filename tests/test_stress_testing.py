@@ -3,6 +3,7 @@ import unittest
 import numpy as np
 
 from financial_models.advanced_portfolio import (
+    correlated_portfolio_metrics,
     covariance_from_correlation,
     illustrative_correlation_matrix,
 )
@@ -126,6 +127,35 @@ class PortfolioMonteCarloTests(unittest.TestCase):
         np.testing.assert_allclose(result.terminal_values, expected)
         self.assertAlmostEqual(result.mean_terminal_value, expected)
         self.assertAlmostEqual(result.probability_of_loss, 0.0)
+
+    def test_terminal_value_compounds_the_sum_of_annual_log_returns(self):
+        assets = (AssetAllocation("Growth", 0.05, 0.10, 1.0),)
+        covariance = np.array([[0.01]])
+        result = simulate_portfolio_terminal_values(
+            assets,
+            covariance,
+            initial_investment=250_000.0,
+            horizon_years=3,
+            n_simulations=5,
+            random_state=11,
+        )
+        metrics = correlated_portfolio_metrics(
+            assets,
+            covariance,
+            investment_amount=250_000.0,
+            horizon_years=3,
+        )
+        gross_mean = 1.0 + metrics.expected_return
+        log_variance = np.log1p((metrics.volatility**2) / (gross_mean**2))
+        log_sigma = float(np.sqrt(log_variance))
+        log_mean = float(np.log(gross_mean) - 0.5 * log_variance)
+        annual_log_returns = np.random.default_rng(11).normal(
+            loc=log_mean,
+            scale=log_sigma,
+            size=(5, 3),
+        )
+        expected = 250_000.0 * np.exp(annual_log_returns.sum(axis=1))
+        np.testing.assert_allclose(result.terminal_values, expected)
 
     def test_seeded_monte_carlo_is_reproducible(self):
         assets = workbook_balanced_portfolio()

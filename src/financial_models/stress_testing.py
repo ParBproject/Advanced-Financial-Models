@@ -14,6 +14,7 @@ from .cash_flow import (
 )
 from .credit_risk import Loan, probability_of_default, summarize_portfolio
 from .portfolio import AssetAllocation
+from .validation import require_finite, require_probability
 
 
 @dataclass(frozen=True)
@@ -30,11 +31,16 @@ class CashFlowStressScenario:
     def validate(self) -> None:
         if not self.name.strip():
             raise ValueError("scenario name must not be empty")
-        if self.revenue_multiplier < 0:
+        revenue_multiplier = require_finite("revenue multiplier", self.revenue_multiplier)
+        require_finite("monthly growth delta", self.monthly_growth_delta)
+        require_finite("operating expense ratio delta", self.operating_expense_ratio_delta)
+        fixed_cost_multiplier = require_finite("fixed cost multiplier", self.fixed_cost_multiplier)
+        capex_multiplier = require_finite("capex multiplier", self.capex_multiplier)
+        if revenue_multiplier < 0:
             raise ValueError("revenue multiplier must be non-negative")
-        if self.fixed_cost_multiplier < 0:
+        if fixed_cost_multiplier < 0:
             raise ValueError("fixed cost multiplier must be non-negative")
-        if self.capex_multiplier < 0:
+        if capex_multiplier < 0:
             raise ValueError("capex multiplier must be non-negative")
 
 
@@ -58,7 +64,9 @@ class CreditStressScenario:
     def validate(self) -> None:
         if not self.name.strip():
             raise ValueError("scenario name must not be empty")
-        if self.pd_multiplier < 0 or self.lgd_multiplier < 0:
+        pd_multiplier = require_finite("pd multiplier", self.pd_multiplier)
+        lgd_multiplier = require_finite("lgd multiplier", self.lgd_multiplier)
+        if pd_multiplier < 0 or lgd_multiplier < 0:
             raise ValueError("credit stress multipliers must be non-negative")
 
 
@@ -161,8 +169,7 @@ def stress_credit_portfolio(
     loan_tuple = tuple(loans)
     if not loan_tuple:
         raise ValueError("portfolio must contain at least one loan")
-    if not 0 <= base_loss_given_default <= 1:
-        raise ValueError("base loss given default must be between 0 and 1")
+    require_probability("base loss given default", base_loss_given_default)
 
     baseline = summarize_portfolio(
         loan_tuple,
