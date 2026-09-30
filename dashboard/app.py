@@ -484,6 +484,12 @@ def render_market() -> None:
                 st.error(str(exc))
                 return
     else:
+        st.caption(
+            prose(
+                "This download needs the optional yfinance package. "
+                "The GitHub Pages demo runs in the browser and does not include it."
+            )
+        )
         tickers = st.text_input("Tickers", "SPY QQQ TLT GLD")
         start = st.text_input("Start date", "2020-01-01")
         if st.button("Download"):

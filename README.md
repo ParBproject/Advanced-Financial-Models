@@ -1,6 +1,10 @@
 # Advanced Financial Models
 
+[![Live demo](https://img.shields.io/badge/Live_demo-GitHub_Pages-10B981?style=for-the-badge)](https://parbproject.github.io/Advanced-Financial-Models/)
+
 Cash-flow forecasts, credit expected loss, and portfolio risk, with the same calculations in an Excel workbook, a tested Python package, and a Streamlit board.
+
+**[Open the live demo](https://parbproject.github.io/Advanced-Financial-Models/).** It is this Streamlit board, running in the browser from GitHub Pages. There is no sign-in and no server to keep running. Price downloads need a local `yfinance` install; the hosted Market risk tab uses the worked example and CSV upload.
 
 The baseline book is a 12-month liquidity forecast, a score-band expected-loss model, and a six-asset allocation. The Python package adds borrower concentration, covariance-aware risk, stress tests, a seeded Monte Carlo, and historical VaR, expected shortfall, and rebalanced backtests.
 
@@ -115,7 +119,7 @@ python -m unittest discover -s tests -v
 
 The suite pins the guide identity **$100,000 × 15% PD × 45% LGD = $6,750** expected loss, the month-1 cash identity, the effective monthly discount, borrower HHI on a hand-calculated book, covariance math, PD and LGD caps, seeded Monte Carlo, historical VaR and expected shortfall, Sortino against the risk-free threshold, and the workbook formulas for cash flow and zero-correlation volatility.
 
-GitHub Actions runs that suite on every push and every pull request, on Python 3.10 and 3.12.
+GitHub Actions runs that suite on every push and every pull request, on Python 3.10 and 3.12. The Pages workflow also builds the browser bundle, and `tests/test_demo_build.py` checks that the bundle still reports the workbook ending cash, the 1,000-loan expected loss, and the covariance-aware volatility.
 
 ## Workbook
 
