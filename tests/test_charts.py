@@ -26,6 +26,15 @@ class ChartThemeTests(unittest.TestCase):
         figure = cash_flow_plotly(forecast_cash_flow())
         self.assertEqual(figure.layout.paper_bgcolor, BG)
 
+    @unittest.skipUnless(find_spec("plotly") is not None, "plotly is not installed")
+    def test_wealth_chart_keeps_series_past_the_palette_length(self):
+        from financial_models.charts import wealth_plotly
+
+        series = {f"S{i}": [1.0, 1.01] for i in range(8)}
+        figure = wealth_plotly([0, 1], series, title="Growth of $1")
+        self.assertEqual(len(figure.data), 8)
+        self.assertEqual([trace.name for trace in figure.data], list(series))
+
 
 if __name__ == "__main__":
     unittest.main()

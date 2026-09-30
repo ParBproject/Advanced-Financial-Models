@@ -3,6 +3,8 @@
 Price history is never forward-filled. A missing print would otherwise become
 a zero return and understate both volatility and drawdown. Incomplete rows are
 dropped only when several assets are aligned, and that choice is explicit.
+Rows must already be in time order. A reversed file is rejected rather than
+silently turned into returns between the wrong neighbors.
 """
 
 from __future__ import annotations
@@ -103,6 +105,10 @@ def _price_frame(prices: pd.DataFrame) -> pd.DataFrame:
         raise ValueError("prices must be strictly positive")
     if len(numeric) < 2:
         raise ValueError("prices must contain at least two observations")
+    if not numeric.index.is_monotonic_increasing:
+        raise ValueError("prices must be ordered by time")
+    if numeric.index.has_duplicates:
+        raise ValueError("prices must not contain duplicate timestamps")
     return numeric
 
 
@@ -407,7 +413,9 @@ def download_adjusted_close(
     """Download adjusted closes with the optional yfinance dependency.
 
     Dates missing a price for any requested symbol are dropped. They are not
-    forward-filled.
+    forward-filled. The symbol list is whatever the caller passes, so a
+    backtest of names that are listed today does not add names that delisted
+    earlier.
     """
     symbols = [ticker.strip().upper() for ticker in tickers if str(ticker).strip()]
     if not symbols:
@@ -447,41 +455,78 @@ def download_adjusted_close(
     return align_prices(prices)
 
 
+def _long_only_weights(weights: Sequence[float], n_assets: int) -> np.ndarray:
+    target = np.asarray(weights, dtype=float)
+    if target.ndim != 1 or len(target) != n_assets:
+        raise ValueError("weights must match the number of price columns")
+    if not np.isfinite(target).all() or np.any(target < 0):
+        raise ValueError("weights must be finite and non-negative")
+    if abs(float(target.sum()) - 1.0) > 1e-9:
+        raise ValueError("weights must sum to 1.0")
+    return target
+
+
+def buy_and_hold_returns(
+    prices: pd.DataFrame,
+    weights: Sequence[float],
+) -> pd.Series:
+    """Return a drifted long-only book with no rebalance and no trading cost.
+
+    Weights are applied to the first price and then held. The return from one
+    row to the next uses only those two prices, so a later close cannot change
+    an earlier weight. This is the no-trade benchmark for
+    ``backtest_rebalanced_portfolio``.
+    """
+    clean = _price_frame(prices)
+    target = _long_only_weights(weights, clean.shape[1])
+    values = clean.to_numpy(dtype=float)
+    wealth = (values / values[0]) @ target
+    returns = wealth[1:] / wealth[:-1] - 1.0
+    if not np.isfinite(returns).all() or np.any(returns < -1.0):
+        raise ValueError("buy-and-hold returns must be finite and at least -100%")
+    return pd.Series(returns, index=clean.index[1:], name="buy_and_hold_return")
+
+
 def backtest_rebalanced_portfolio(
     prices: pd.DataFrame,
     weights: Sequence[float],
     *,
     rebalance_every: int = 21,
     transaction_cost_bps: float = 5.0,
+    slippage_bps: float = 0.0,
     initial_value: float = 1.0,
 ) -> RebalancedBacktestResult:
     """Backtest a long-only target allocation with periodic rebalancing.
 
+    The weight that earns period t is the weight held at the previous close.
+    After that return, if the period is a rebalance date and a later period
+    still remains, the book trades back to the target at that close. The
+    close that sets the new weight is not used to earn the return just
+    realized.
+
     Turnover is one-way turnover: half the sum of absolute weight changes.
-    Transaction cost is that turnover times the basis-point rate, charged on
-    end-of-period wealth. Rebalancing at the final observation is skipped
-    because it cannot affect a later return. The book is assumed to start on
-    the target weights, so there is no opening trade.
+    Commission and slippage are both charged as that turnover times their
+    basis-point rates, on post-return wealth. Slippage here is a proportional
+    execution haircut, not a delay of the fill. Rebalancing at the final
+    observation is skipped because it cannot affect a later return. The book
+    is assumed to start on the target weights, so there is no opening trade.
     """
     if isinstance(rebalance_every, bool) or not isinstance(rebalance_every, int):
         raise TypeError("rebalance_every must be a positive integer")
     if rebalance_every < 1:
         raise ValueError("rebalance_every must be a positive integer")
     transaction_cost_bps = require_finite("transaction cost", transaction_cost_bps)
+    slippage_bps = require_finite("slippage", slippage_bps)
     initial_value = require_finite("initial value", initial_value)
     if transaction_cost_bps < 0:
         raise ValueError("transaction cost must be non-negative")
+    if slippage_bps < 0:
+        raise ValueError("slippage must be non-negative")
     if initial_value <= 0:
         raise ValueError("initial value must be positive")
 
     returns = simple_returns(prices)
-    target = np.asarray(weights, dtype=float)
-    if target.ndim != 1 or len(target) != returns.shape[1]:
-        raise ValueError("weights must match the number of price columns")
-    if not np.isfinite(target).all() or np.any(target < 0):
-        raise ValueError("weights must be finite and non-negative")
-    if abs(float(target.sum()) - 1.0) > 1e-9:
-        raise ValueError("weights must sum to 1.0")
+    target = _long_only_weights(weights, returns.shape[1])
 
     current_weights = target.copy()
     wealth_value = float(initial_value)
@@ -504,7 +549,7 @@ def backtest_rebalanced_portfolio(
         transaction_cost = 0.0
         if position % rebalance_every == 0 and position < n_periods:
             turnover = 0.5 * float(np.abs(target - drifted_weights).sum())
-            cost_rate = turnover * transaction_cost_bps / 10_000.0
+            cost_rate = turnover * (transaction_cost_bps + slippage_bps) / 10_000.0
             if cost_rate >= 1.0:
                 raise ValueError("transaction cost cannot consume the whole portfolio")
             transaction_cost = wealth_value * cost_rate

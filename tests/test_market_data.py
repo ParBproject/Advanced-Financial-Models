@@ -8,6 +8,7 @@ from financial_models.market_data import (
     align_prices,
     annualize_sample,
     backtest_rebalanced_portfolio,
+    buy_and_hold_returns,
     cumulative_wealth,
     download_adjusted_close,
     historical_risk_summary,
@@ -172,6 +173,87 @@ class MarketDataTests(unittest.TestCase):
         )
         np.testing.assert_allclose(result.returns, expected)
         self.assertAlmostEqual(result.total_transaction_cost, 0.0)
+
+    def test_prices_must_be_in_time_order_without_duplicate_timestamps(self):
+        prices = worked_example_prices()
+        reversed_prices = prices.iloc[::-1]
+        with self.assertRaisesRegex(ValueError, "ordered by time"):
+            simple_returns(reversed_prices)
+
+        duplicate = prices.copy()
+        index = list(prices.index)
+        index[1] = index[0]
+        duplicate.index = index
+        with self.assertRaisesRegex(ValueError, "duplicate"):
+            simple_returns(duplicate)
+
+    def test_rebalance_earns_the_previous_close_weights(self):
+        prices = pd.DataFrame(
+            {
+                "AAA": [100.0, 200.0, 200.0],
+                "BBB": [100.0, 100.0, 200.0],
+            }
+        )
+        result = backtest_rebalanced_portfolio(
+            prices,
+            [0.5, 0.5],
+            rebalance_every=1,
+            transaction_cost_bps=0.0,
+        )
+        # Day 1 is earned at 50/50, not at a weight chosen from that day's jump.
+        # Day 2 is earned at the post-rebalance 50/50, not at the drifted 2/3, 1/3.
+        self.assertAlmostEqual(result.returns.iloc[0], 0.50)
+        self.assertAlmostEqual(result.returns.iloc[1], 0.50)
+        self.assertAlmostEqual(result.wealth.iloc[-1], 2.25)
+
+    def test_no_rebalance_matches_buy_and_hold_and_charges_nothing(self):
+        prices = worked_example_prices()
+        weights = [0.5, 0.5]
+        result = backtest_rebalanced_portfolio(
+            prices,
+            weights,
+            rebalance_every=100,
+            transaction_cost_bps=5.0,
+            slippage_bps=5.0,
+        )
+        held = buy_and_hold_returns(prices, weights)
+        np.testing.assert_allclose(result.returns.to_numpy(), held.to_numpy())
+        self.assertAlmostEqual(result.total_turnover, 0.0)
+        self.assertAlmostEqual(result.total_transaction_cost, 0.0)
+        self.assertAlmostEqual(float(result.wealth.iloc[-1]), 1.045)
+
+    def test_slippage_is_charged_like_commission_on_one_way_turnover(self):
+        prices = pd.DataFrame(
+            {
+                "AAA": [100.0, 110.0, 110.0],
+                "BBB": [100.0, 100.0, 100.0],
+            }
+        )
+        commission = backtest_rebalanced_portfolio(
+            prices,
+            [0.5, 0.5],
+            rebalance_every=1,
+            transaction_cost_bps=100.0,
+            slippage_bps=0.0,
+        )
+        slippage = backtest_rebalanced_portfolio(
+            prices,
+            [0.5, 0.5],
+            rebalance_every=1,
+            transaction_cost_bps=0.0,
+            slippage_bps=100.0,
+        )
+        np.testing.assert_allclose(
+            slippage.transaction_costs.to_numpy(),
+            commission.transaction_costs.to_numpy(),
+        )
+        self.assertAlmostEqual(slippage.transaction_costs.iloc[0], 0.00025)
+        with self.assertRaisesRegex(ValueError, "slippage"):
+            backtest_rebalanced_portfolio(
+                prices,
+                [0.5, 0.5],
+                slippage_bps=-1.0,
+            )
 
     def test_download_requires_a_ticker_and_yfinance(self):
         with self.assertRaisesRegex(ValueError, "ticker"):

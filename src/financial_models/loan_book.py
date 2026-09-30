@@ -28,7 +28,8 @@ from pathlib import Path
 import numpy as np
 
 from .credit_concentration import CreditConcentrationSummary
-from .credit_risk import Loan, PortfolioCreditSummary
+from .credit_risk import SCORE_BANDS, Loan, PortfolioCreditSummary, probability_of_default
+from .validation import require_finite, require_probability
 
 LOAN_COLUMNS = ("Customer_ID", "Credit_Score", "Loan_Amount")
 AUDIT_COLUMNS = (
@@ -67,6 +68,43 @@ class CreditBookMemoAudit:
     default_count_operational_risk_at_or_below_60: int
     count_operational_risk_at_or_below_60: int
     combined_stress_net_income: float
+
+
+@dataclass(frozen=True)
+class ScoreBandCalibration:
+    """One workbook score band against the default flag on the same rows."""
+
+    label: str
+    assumed_pd: float
+    loan_count: int
+    default_count: int
+    realized_default_rate: float
+    exposure: float
+
+
+@dataclass(frozen=True)
+class CreditBookBenchmark:
+    """In-sample comparison of score-band expected loss with the default flag.
+
+    ``portfolio_data.csv`` has no origination date and no default date, so
+    these rows cannot be split into a walk-forward test. ``PD_Score`` is not
+    a second forecast: on this file its exposure-weighted average matches the
+    exposure-weighted default rate, which is why ``file_pd_expected_loss``
+    matches ``realized_loss_at_lgd``.
+    """
+
+    bands: tuple[ScoreBandCalibration, ...]
+    loan_count: int
+    default_count: int
+    count_default_rate: float
+    exposure: float
+    exposure_weighted_default_rate: float
+    exposure_weighted_score_band_pd: float
+    exposure_weighted_file_pd: float
+    loss_given_default: float
+    score_band_expected_loss: float
+    realized_loss_at_lgd: float
+    file_pd_expected_loss: float
 
 
 def credit_book_csv_path() -> Path:
@@ -156,6 +194,107 @@ def credit_book_memo_audit(path: Path | None = None) -> CreditBookMemoAudit:
     )
 
 
+def credit_book_benchmark(
+    path: Path | None = None,
+    *,
+    loss_given_default: float = 0.45,
+) -> CreditBookBenchmark:
+    """Compare score-band expected loss with the file's own default flag.
+
+    Score-band expected loss is exposure × workbook PD × LGD. Realized loss
+    at the same LGD is exposure × the 0/1 default flag × LGD. Bands with no
+    loans are omitted. The result is descriptive of this file, not a
+    predictive validation.
+    """
+    loss_given_default = require_probability("loss given default", loss_given_default)
+    rows = _read_credit_book(str(_resolve_path(path)))
+    columns = ("Customer_ID", "Credit_Score", "Loan_Amount", "Default", "PD_Score")
+    _require_columns(rows, columns)
+    if not rows:
+        raise ValueError("credit book must contain at least one loan")
+
+    totals = {
+        (low, high): {"count": 0, "defaults": 0, "exposure": 0.0}
+        for low, high, _probability in SCORE_BANDS
+    }
+    loan_count = 0
+    default_count = 0
+    exposure_total = 0.0
+    exposure_defaults = 0.0
+    exposure_file_pd = 0.0
+    exposure_band_pd = 0.0
+
+    for row in rows:
+        exposure = require_finite("loan exposure", row["Loan_Amount"])
+        if exposure < 0:
+            raise ValueError("loan exposure must be non-negative")
+        default = _default_flag(row["Default"])
+        file_pd = require_probability("PD_Score", row["PD_Score"])
+        score = _credit_score(row["Credit_Score"])
+        assumed_pd = probability_of_default(score)
+        band_key = _score_band_key(score)
+        bucket = totals[band_key]
+        bucket["count"] += 1
+        bucket["defaults"] += default
+        bucket["exposure"] += exposure
+        loan_count += 1
+        default_count += default
+        exposure_total += exposure
+        exposure_defaults += exposure * default
+        exposure_file_pd += exposure * file_pd
+        exposure_band_pd += exposure * assumed_pd
+
+    if exposure_total <= 0:
+        raise ValueError("portfolio total exposure must be positive")
+
+    bands: list[ScoreBandCalibration] = []
+    for low, high, assumed_pd in SCORE_BANDS:
+        bucket = totals[(low, high)]
+        if bucket["count"] == 0:
+            continue
+        bands.append(
+            ScoreBandCalibration(
+                label=f"{low}-{high}",
+                assumed_pd=assumed_pd,
+                loan_count=bucket["count"],
+                default_count=bucket["defaults"],
+                realized_default_rate=bucket["defaults"] / bucket["count"],
+                exposure=bucket["exposure"],
+            )
+        )
+    return CreditBookBenchmark(
+        bands=tuple(bands),
+        loan_count=loan_count,
+        default_count=default_count,
+        count_default_rate=default_count / loan_count,
+        exposure=exposure_total,
+        exposure_weighted_default_rate=exposure_defaults / exposure_total,
+        exposure_weighted_score_band_pd=exposure_band_pd / exposure_total,
+        exposure_weighted_file_pd=exposure_file_pd / exposure_total,
+        loss_given_default=loss_given_default,
+        score_band_expected_loss=exposure_band_pd * loss_given_default,
+        realized_loss_at_lgd=exposure_defaults * loss_given_default,
+        file_pd_expected_loss=exposure_file_pd * loss_given_default,
+    )
+
+
+def format_credit_book_benchmark(benchmark: CreditBookBenchmark) -> str:
+    """State the score-band loss next to the in-sample default flag."""
+    return (
+        f"Score-band expected loss is ${benchmark.score_band_expected_loss:,.2f}. "
+        f"On this file, {benchmark.default_count:,} of {benchmark.loan_count:,} loans "
+        f"are flagged default ({benchmark.count_default_rate:.2%} by count, "
+        f"{benchmark.exposure_weighted_default_rate:.2%} of exposure). "
+        f"At the same {benchmark.loss_given_default:.0%} loss given default, that flag "
+        f"implies ${benchmark.realized_loss_at_lgd:,.2f} of loss. "
+        f"The stored PD_Score is aggregate-calibrated to these same defaults: "
+        f"its exposure-weighted average is {benchmark.exposure_weighted_file_pd:.2%}, "
+        f"against {benchmark.exposure_weighted_score_band_pd:.2%} for the score bands, "
+        f"so it is not a second forecast. The file has no origination date, so this "
+        f"comparison is in-sample, not a walk-forward test."
+    )
+
+
 def format_credit_book_decision(
     summary: PortfolioCreditSummary,
     concentration: CreditConcentrationSummary,
@@ -190,6 +329,20 @@ def _require_columns(rows: Sequence[Mapping[str, str]], columns: Sequence[str]) 
     missing = [column for column in columns if column not in rows[0]]
     if missing:
         raise ValueError("credit book is missing column " + ", ".join(missing))
+
+
+def _default_flag(value: str) -> int:
+    number = require_finite("Default", value)
+    if number not in (0.0, 1.0):
+        raise ValueError("Default must be 0 or 1")
+    return int(number)
+
+
+def _score_band_key(score: int) -> tuple[int, int]:
+    for low, high, _probability in SCORE_BANDS:
+        if low <= score <= high:
+            return low, high
+    raise ValueError("credit score must be between 300 and 850")
 
 
 def _credit_score(value: str) -> int:
