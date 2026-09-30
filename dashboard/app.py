@@ -16,9 +16,11 @@ from financial_models import (
     assess_loan,
     correlated_portfolio_metrics,
     covariance_from_correlation,
+    credit_book_benchmark,
     credit_book_memo_audit,
     credit_concentration,
     forecast_cash_flow,
+    format_credit_book_benchmark,
     format_credit_book_decision,
     illustrative_correlation_matrix,
     loans_from_credit_book,
@@ -45,6 +47,7 @@ from financial_models.market_data import (
     align_prices,
     annualize_sample,
     backtest_rebalanced_portfolio,
+    buy_and_hold_returns,
     cumulative_wealth,
     download_adjusted_close,
     historical_risk_summary,
@@ -153,6 +156,7 @@ def render_overview() -> None:
     credit = summarize_portfolio(loans)
     concentration = credit_concentration(loans)
     audit = credit_book_memo_audit()
+    benchmark = credit_book_benchmark()
     assets = workbook_balanced_portfolio()
     covariance = covariance_from_correlation(
         [asset.volatility for asset in assets],
@@ -167,12 +171,12 @@ def render_overview() -> None:
     columns[3].metric("Covariance-aware volatility", percent(portfolio.volatility))
 
     st.markdown(prose(format_credit_book_decision(credit, concentration, audit)))
+    st.markdown(prose(format_credit_book_benchmark(benchmark)))
     show(cash_flow_plotly(cash), key="overview-cash")
     st.caption(
         prose(
-            "The cash forecast uses the workbook assumptions. Expected loss uses a 45% loss given "
-            "default and the score-band default rate. The file's reported probability of default "
-            f"averages {audit.average_reported_pd:.2%} and is not the rate in that calculation."
+            "The cash forecast uses the workbook assumptions. The expected-loss tile is the "
+            "score-band model. The paragraph above compares it with this file's default flag."
         )
     )
 
@@ -233,6 +237,7 @@ def render_credit() -> None:
     summary = summarize_portfolio(loans, loss_given_default=loss_given_default)
     concentration = credit_concentration(loans)
     audit = credit_book_memo_audit()
+    benchmark = credit_book_benchmark(loss_given_default=loss_given_default)
     checked = assess_loan(
         Loan("L-001", "Guide example", 100_000.0, 620),
         loss_given_default=loss_given_default,
@@ -252,7 +257,43 @@ def render_credit() -> None:
         money(checked.expected_loss, decimals=2),
         help="100,000 exposure times the 15% band PD times the selected LGD.",
     )
+    realized = st.columns(4)
+    realized[0].metric("Realized defaults", f"{benchmark.default_count} of {benchmark.loan_count}")
+    realized[1].metric(
+        "Realized loss at this LGD",
+        money(benchmark.realized_loss_at_lgd, decimals=2),
+        help=(
+            "Exposure times the file's default flag times the selected LGD. "
+            "In-sample: the file has no origination date."
+        ),
+    )
+    realized[2].metric("Default rate by count", percent(benchmark.count_default_rate))
+    realized[3].metric(
+        "Default rate by exposure",
+        percent(benchmark.exposure_weighted_default_rate),
+    )
     st.markdown(prose(format_credit_book_decision(summary, concentration, audit)))
+    st.markdown(prose(format_credit_book_benchmark(benchmark)))
+    bands = pd.DataFrame(
+        {
+            "Score band": [band.label for band in benchmark.bands],
+            "Assumed PD": [band.assumed_pd for band in benchmark.bands],
+            "Loans": [band.loan_count for band in benchmark.bands],
+            "Defaults": [band.default_count for band in benchmark.bands],
+            "Realized default rate": [band.realized_default_rate for band in benchmark.bands],
+            "Exposure": [band.exposure for band in benchmark.bands],
+        }
+    )
+    st.dataframe(
+        bands,
+        hide_index=True,
+        use_container_width=True,
+        column_config={
+            "Assumed PD": st.column_config.NumberColumn(format="%.1%"),
+            "Realized default rate": st.column_config.NumberColumn(format="%.2%"),
+            "Exposure": st.column_config.NumberColumn(format="$%.2f"),
+        },
+    )
     show(credit_ratings_plotly(summary, concentration), key="credit-ratings")
     rows = pd.DataFrame(
         [
@@ -600,13 +641,48 @@ def render_market() -> None:
             )
         )
     portfolio_returns = portfolio_return_series(returns, weights)
+    schedule = st.columns(3)
+    rebalance_every = int(
+        schedule[0].number_input(
+            "Rebalance every N periods",
+            min_value=1,
+            value=21,
+            step=1,
+            help="Trades back to the target weights at the close, after that period's return.",
+        )
+    )
+    commission_bps = float(
+        schedule[1].number_input(
+            "Commission (bps, one-way)",
+            min_value=0.0,
+            value=5.0,
+            step=1.0,
+        )
+    )
+    slippage_bps = float(
+        schedule[2].number_input(
+            "Slippage (bps, one-way)",
+            min_value=0.0,
+            value=0.0,
+            step=1.0,
+            help="Proportional execution haircut on one-way turnover. Zero means it is not included.",
+        )
+    )
     try:
         summary = historical_risk_summary(
             prices,
             periods_per_year=periods_per_year if annualize else 1,
         )
+        backtest = backtest_rebalanced_portfolio(
+            prices,
+            weights,
+            rebalance_every=rebalance_every,
+            transaction_cost_bps=commission_bps,
+            slippage_bps=slippage_bps,
+        )
+        held = buy_and_hold_returns(prices, weights)
         performance = performance_summary(
-            portfolio_returns,
+            backtest.returns,
             periods_per_year=periods_per_year,
             risk_free_rate=0.03,
             annualize=annualize,
@@ -614,20 +690,16 @@ def render_market() -> None:
     except (TypeError, ValueError) as exc:
         st.error(str(exc))
         return
-    backtest = backtest_rebalanced_portfolio(
-        prices,
-        weights,
-        rebalance_every=max(1, len(returns) // 2),
-        transaction_cost_bps=5.0,
+    volatility_label = (
+        "Backtest annualized volatility" if annualize else "Backtest period volatility"
     )
-    volatility_label = "Annualized volatility" if annualize else "Period volatility"
-    sharpe_label = "Sharpe" if annualize else "Sharpe (not annualized)"
-    sortino_label = "Sortino" if annualize else "Sortino (not annualized)"
+    sharpe_label = "Backtest Sharpe" if annualize else "Backtest Sharpe (not annualized)"
+    sortino_label = "Backtest Sortino" if annualize else "Backtest Sortino (not annualized)"
     show_sortino = performance.sortino_ratio is not None
     show_tail_risk = performance.value_at_risk is not None
     metrics = st.columns(4)
-    metrics[0].metric("Cumulative return", percent(performance.cumulative_return))
-    metrics[1].metric("Max drawdown", percent(performance.max_drawdown))
+    metrics[0].metric("Backtest cumulative return", percent(performance.cumulative_return))
+    metrics[1].metric("Backtest max drawdown", percent(performance.max_drawdown))
     if show_tail_risk:
         metrics[2].metric("95% historical VaR", percent(performance.value_at_risk))
     else:
@@ -645,14 +717,48 @@ def render_market() -> None:
         more[2].metric("95% expected shortfall", "n/a", help=performance.tail_risk_reason)
     more[3].metric("Backtest ending wealth", f"{backtest.wealth.iloc[-1]:.4f}")
 
-    wealth = {"Portfolio": cumulative_wealth(portfolio_returns)}
+    constant_mix_wealth = cumulative_wealth(portfolio_returns)
+    held_wealth = cumulative_wealth(held)
+    books = pd.DataFrame(
+        [
+            {
+                "Book": "Backtest, net of costs",
+                "Ending wealth": float(backtest.wealth.iloc[-1]),
+                "Cumulative return": float(backtest.wealth.iloc[-1] - 1.0),
+            },
+            {
+                "Book": "Buy and hold",
+                "Ending wealth": float(held_wealth[-1]),
+                "Cumulative return": float(held_wealth[-1] - 1.0),
+            },
+            {
+                "Book": "Constant mix, no costs",
+                "Ending wealth": float(constant_mix_wealth[-1]),
+                "Cumulative return": float(constant_mix_wealth[-1] - 1.0),
+            },
+        ]
+    )
+    st.dataframe(
+        books,
+        hide_index=True,
+        use_container_width=True,
+        column_config={
+            "Ending wealth": st.column_config.NumberColumn(format="%.4f"),
+            "Cumulative return": st.column_config.NumberColumn(format="%.2%"),
+        },
+    )
+    wealth = {
+        "Backtest, net of costs": backtest.wealth.to_numpy(),
+        "Buy and hold": held_wealth,
+        "Constant mix, no costs": constant_mix_wealth,
+    }
     for column in columns:
         wealth[str(column)] = cumulative_wealth(returns[column])
     show(
         wealth_plotly(list(portfolio_returns.index), wealth, title="Growth of $1"),
         key="market-wealth",
     )
-    return_column = "Annualized return" if annualize else "Mean period return"
+    return_column = "Annualized mean return" if annualize else "Mean period return"
     volatility_column = "Annualized volatility" if annualize else "Period volatility"
     risk = pd.DataFrame(
         {
@@ -696,7 +802,31 @@ def render_market() -> None:
             else "Sharpe uses that scaled risk-free rate and is not annualized. "
         )
         ratio_note += f"Sortino is not shown: {performance.sortino_reason}. "
-    st.caption(prose(tail_note + ratio_note + "The backtest charges 5 bps of one-way turnover."))
+    if backtest.total_turnover == 0.0:
+        trade_note = (
+            f"No rebalance fell inside this {sample_periods}-period sample "
+            f"(every {rebalance_every} periods), so no cost was charged and the "
+            "backtest matches buy and hold. "
+        )
+    else:
+        trade_note = (
+            f"Turnover was {backtest.total_turnover:.2%} and costs were "
+            f"{backtest.total_transaction_cost:.4f} on a starting wealth of 1. "
+        )
+    execution_note = (
+        f"The backtest rebalances every {rebalance_every} periods at the close, "
+        "after that period's return, so the new weights do not earn the same bar. "
+        f"Commission is {commission_bps:.1f} bps of one-way turnover and slippage is "
+        f"{slippage_bps:.1f} bps. The book starts on the target weights, so the opening "
+        "trade is not charged. "
+        "Buy and hold never trades. Constant mix is rebalanced every period before costs. "
+    )
+    mean_note = (
+        "Asset returns in the table are arithmetic means"
+        + (" times periods per year" if annualize else "")
+        + ", not compound growth. "
+    )
+    st.caption(prose(tail_note + ratio_note + execution_note + trade_note + mean_note))
 
 
 render_header()

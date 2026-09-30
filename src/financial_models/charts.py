@@ -8,6 +8,7 @@ summary statistics.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from itertools import cycle
 from pathlib import Path
 
 import numpy as np
@@ -540,7 +541,7 @@ def wealth_plotly(
     """Plot one or more wealth indexes that the caller has already compounded."""
     go = _plotly()
     figure = go.Figure()
-    for color, (name, values) in zip(SERIES, series.items(), strict=False):
+    for color, (name, values) in zip(cycle(SERIES), series.items()):
         figure.add_scatter(
             x=list(dates),
             y=list(values),

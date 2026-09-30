@@ -48,6 +48,8 @@ class CashFlowStressTests(unittest.TestCase):
         )
         result = stress_cash_flow(CashFlowAssumptions(), scenario)
 
+        self.assertAlmostEqual(result.ending_cash_change, -339_394.9073, places=3)
+        self.assertAlmostEqual(result.npv_change, -320_315.4841, places=3)
         self.assertLess(result.ending_cash_change, 0.0)
         self.assertLess(result.npv_change, 0.0)
         self.assertLess(
@@ -199,6 +201,26 @@ class PortfolioMonteCarloTests(unittest.TestCase):
         self.assertLessEqual(result.percentile_75, result.percentile_95)
         self.assertGreaterEqual(result.probability_of_loss, 0.0)
         self.assertLessEqual(result.probability_of_loss, 1.0)
+
+    def test_seeded_ten_thousand_paths_match_the_published_percentiles(self):
+        assets = workbook_balanced_portfolio()
+        covariance = covariance_from_correlation(
+            [asset.volatility for asset in assets],
+            illustrative_correlation_matrix(),
+        )
+        result = simulate_portfolio_terminal_values(
+            assets,
+            covariance,
+            n_simulations=10_000,
+            random_state=42,
+        )
+        theoretical = 1_000_000.0 * ((1.0 + result.expected_annual_return) ** 10)
+
+        self.assertAlmostEqual(result.median_terminal_value, 2_183_803.22, places=2)
+        self.assertAlmostEqual(result.percentile_05, 1_379_555.71, places=2)
+        self.assertAlmostEqual(result.percentile_95, 3_504_410.90, places=2)
+        self.assertAlmostEqual(result.probability_of_loss, 0.0022)
+        self.assertAlmostEqual(result.mean_terminal_value, theoretical, delta=theoretical * 0.02)
 
 
 if __name__ == "__main__":

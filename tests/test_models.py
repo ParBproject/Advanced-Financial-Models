@@ -71,9 +71,16 @@ class CashFlowTests(unittest.TestCase):
 class CreditRiskTests(unittest.TestCase):
     def test_documented_credit_score_bands(self):
         self.assertEqual(probability_of_default(820), 0.01)
+        self.assertEqual(probability_of_default(800), 0.01)
+        self.assertEqual(probability_of_default(799), 0.02)
+        self.assertEqual(probability_of_default(750), 0.02)
+        self.assertEqual(probability_of_default(749), 0.04)
         self.assertEqual(probability_of_default(620), 0.15)
+        self.assertEqual(probability_of_default(500), 0.35)
+        self.assertEqual(probability_of_default(499), 0.50)
         self.assertEqual(probability_of_default(520), 0.35)
         self.assertEqual(probability_of_default(480), 0.50)
+        self.assertEqual(probability_of_default(300), 0.50)
 
     def test_expected_loss_matches_guide_example(self):
         result = assess_loan(Loan("L-001", "Example", 100_000.0, 620))

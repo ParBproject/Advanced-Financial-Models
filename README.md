@@ -76,7 +76,7 @@ Live price downloads are optional and are not required for the commands above:
 python -m pip install -e ".[market-data]"
 ```
 
-The Market risk tab can then download adjusted closes. It also runs a short constructed price path that is labeled as a worked example, not as market history. Samples shorter than 60 returns are not annualized, and the 3% risk-free rate is scaled by how much of a year those observations cover. 95% VaR, expected shortfall, and Sortino are shown only with at least 20 returns. Sortino also needs at least three returns below the risk-free rate.
+The Market risk tab can then download adjusted closes. It also runs a short constructed price path that is labeled as a worked example, not as market history. Samples shorter than 60 returns are not annualized, and the 3% risk-free rate is scaled by how much of a year those observations cover. 95% VaR, expected shortfall, and Sortino are shown only with at least 20 returns. Sortino also needs at least three returns below the risk-free rate. The reported Sharpe, drawdown, and VaR are the rebalanced backtest after costs. Buy-and-hold and a costless constant mix are shown beside it. The default schedule is every 21 periods, commission is 5 bps, and slippage starts at 0 bps until you set it. A download of today's tickers does not put delisted names back into the sample.
 
 ## Modules
 
@@ -85,11 +85,11 @@ The Market risk tab can then download adjusted closes. It also runs a short cons
 | `cash_flow` | Monthly revenue, operating expenses, rent, debt service, and CapEx. NPV uses the effective monthly rate from the annual discount assumption. |
 | `credit_risk` | Score-band PD, LGD, and expected loss = exposure × PD × LGD. Ratings follow the workbook: High at PD ≥ 20%, Medium at PD ≥ 7%. |
 | `credit_concentration` | Borrower HHI, effective borrower count, top-N share, and segment stress attribution. |
-| `loan_book` | Loads the 1,000-loan CSV. Expected loss uses the score-band probability of default, not the probability stored on each row. |
+| `loan_book` | Loads the 1,000-loan CSV. Expected loss uses the score-band probability of default, not the probability stored on each row. `credit_book_benchmark` compares those bands with the file's default flag. |
 | `portfolio` | Excel-comparable zero-correlation volatility, √Σ(weight × volatility)². |
 | `advanced_portfolio` | Correlation checks, covariance risk wᵀΣw, long-only simulation, and a sampled frontier. |
 | `stress_testing` | Cash-flow and credit shocks, with PD and LGD capped at 100%. Terminal wealth is a lognormal Monte Carlo matched to the covariance-aware mean and variance. |
-| `market_data` | Simple returns, drawdown, Sharpe, Sortino, historical VaR and expected shortfall, and a fixed-weight backtest with one-way turnover costs. Rows with a missing price are dropped. |
+| `market_data` | Simple returns, drawdown, Sharpe, Sortino, historical VaR and expected shortfall, and a fixed-weight backtest. A period is earned on the weights from the previous close. Commission and slippage are separate one-way costs, and the opening trade is not charged. Buy-and-hold is the no-trade benchmark. Rows with a missing price are dropped. Unsorted or duplicate timestamps are rejected. |
 | `theme`, `charts` | One dark theme for the matplotlib figures and the Plotly board. |
 | `dashboard/app.py` | Streamlit board for cash flow, credit, portfolio risk, stress, and market history. |
 
@@ -103,6 +103,8 @@ These numbers come from the example scripts in this repo.
 
 **Credit.** A $100,000 loan at a score of 620 is a 15% PD. At 45% LGD, expected loss is **$6,750**. On the 1,000-loan book, borrower HHI is **0.001308**, about **764.7** effective borrowers. The largest borrower is `CUST_0209` at **0.26%** of exposure. At PD × 1.75 and LGD × 1.25, stressed expected loss is **$4,258,364.12**.
 
+The **$1,946,680.74** figure is the workbook score-band model, not this file's realized loss. **298 of 1,000** loans are flagged default (**29.80%** by count, **17.23%** of exposure). At the same 45% LGD that flag implies **$5,280,499.26** of loss. The bands rank risk — realized default rates rise as scores fall — but from 700 down they sit below the realized rates. The stored `PD_Score` matches that default flag in aggregate (exposure-weighted PD **17.23%**), so it is not a second forecast. The file has no origination date, so this comparison is in-sample, not a walk-forward test.
+
 The file's 5th and 1st percentiles of per-customer net income are **$43,146.55** and **$25,890.70**. Those are income levels, not a portfolio loss VaR. Loans with an operational-risk score above 60 default at **29.67%** (27 of 91), against **29.81%** (271 of 909) at or below 60.
 
 **Portfolio.** $1,000,000 compounded at the 8.64% expected return for 10 years is **$2,290,327**. A 10,000-path Monte Carlo of the covariance-aware mix, seed 42, has a median terminal value of **$2,183,803**, a 5th percentile of **$1,379,556**, a 95th percentile of **$3,504,411**, and a **0.22%** probability of finishing below the initial investment.
@@ -113,11 +115,11 @@ The file's 5th and 1st percentiles of per-customer net income are **$43,146.55**
 
 ```bash
 python -m pip install -e ".[dev,dashboard]"
-ruff check src tests examples dashboard
-python -m unittest discover -s tests -v
+ruff check src tests examples dashboard demo
+python -m pytest tests -q
 ```
 
-The suite pins the guide identity **$100,000 × 15% PD × 45% LGD = $6,750** expected loss, the month-1 cash identity, the effective monthly discount, borrower HHI on a hand-calculated book, covariance math, PD and LGD caps, seeded Monte Carlo, historical VaR and expected shortfall, Sortino against the risk-free threshold, and the workbook formulas for cash flow and zero-correlation volatility.
+The suite pins the guide identity **$100,000 × 15% PD × 45% LGD = $6,750** expected loss, the month-1 cash identity, the effective monthly discount, borrower HHI on a hand-calculated book, the 1,000-loan score-band loss against the **$5,280,499.26** realized-loss proxy, covariance math, PD and LGD caps, the seeded 10,000-path Monte Carlo percentiles, the severe cash-flow stress, historical VaR and expected shortfall, Sortino against the risk-free threshold, the previous-close execution rule, and the workbook formulas for cash flow and zero-correlation volatility. Covariance-aware volatility on the illustrative matrix stays **9.68%**.
 
 GitHub Actions runs that suite on every push and every pull request, on Python 3.10 and 3.12. The Pages workflow also builds the browser bundle, and `tests/test_demo_build.py` checks that the bundle still reports the workbook ending cash, the 1,000-loan expected loss, and the covariance-aware volatility.
 
@@ -130,7 +132,7 @@ The cash-flow sheet discounts every month at `(1 + 10%)^(1/12) − 1`. Net cash 
 
 ## Assumptions
 
-Expected loss is not regulatory capital or unexpected loss. Score-band default rates and stress multipliers are portfolio assumptions, not a credit decision. HHI does not estimate default correlation. The Monte Carlo uses independent yearly lognormal draws. Historical returns do not predict future returns. This repository is an educational project and is not investment, lending, accounting, or financial advice.
+Expected loss is not regulatory capital or unexpected loss. Score-band default rates and stress multipliers are portfolio assumptions, not a credit decision, and on the 1,000-loan file they are not the realized default rate. HHI does not estimate default correlation. The Monte Carlo uses independent yearly lognormal draws. Historical returns do not predict future returns. The backtest does not charge an opening trade, and slippage is zero until it is set. This repository is an educational project and is not investment, lending, accounting, or financial advice.
 
 ## License
 

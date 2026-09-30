@@ -44,24 +44,27 @@ class PortfolioCreditSummary:
     high_risk_count: int
 
 
+# Inclusive score bounds and the workbook PD for that band. The bounds partition
+# 300–850, so every accepted score hits exactly one row.
+SCORE_BANDS: tuple[tuple[int, int, float], ...] = (
+    (800, 850, 0.01),
+    (750, 799, 0.02),
+    (700, 749, 0.04),
+    (650, 699, 0.08),
+    (600, 649, 0.15),
+    (550, 599, 0.25),
+    (500, 549, 0.35),
+    (300, 499, 0.50),
+)
+
+
 def probability_of_default(credit_score: int) -> float:
     """Map a FICO-style credit score to the workbook's documented PD bands."""
     credit_score = require_credit_score(credit_score)
-    if credit_score >= 800:
-        return 0.01
-    if credit_score >= 750:
-        return 0.02
-    if credit_score >= 700:
-        return 0.04
-    if credit_score >= 650:
-        return 0.08
-    if credit_score >= 600:
-        return 0.15
-    if credit_score >= 550:
-        return 0.25
-    if credit_score >= 500:
-        return 0.35
-    return 0.50
+    for low, high, probability in SCORE_BANDS:
+        if low <= credit_score <= high:
+            return probability
+    raise ValueError("credit score must be between 300 and 850")
 
 
 def risk_rating(probability: float) -> str:

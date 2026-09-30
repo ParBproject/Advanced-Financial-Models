@@ -188,10 +188,10 @@ Optimize investment portfolio allocation across six asset classes to balance ris
 
 KEY FEATURES
 -----------
-✓ 6 asset classes with historical return and volatility data
+✓ 6 asset classes with stated return and volatility assumptions
 ✓ Dynamic allocation percentages (must sum to 100%)
 ✓ Expected return calculation (weighted average)
-✓ Portfolio risk calculation (weighted standard deviation)
+✓ Portfolio risk calculation (zero-correlation volatility)
 ✓ Sharpe Ratio for risk-adjusted performance
 ✓ 10-year projected portfolio value
 ✓ Three preset scenarios: Conservative, Balanced, Aggressive
@@ -207,7 +207,7 @@ HOW TO USE
 
 2. **Review Asset Classes** (Rows 11-16):
    Each asset class shows:
-   - Expected Return (historical 20-year average)
+   - Expected Return (workbook assumption, not a computed history)
    - Risk/Standard Deviation (volatility)
    - Current Allocation % ⚠️ MODIFY THESE FOR CUSTOM PORTFOLIOS
    - Investment Amount (calculated)
@@ -367,18 +367,14 @@ LOAN RISK MODEL METHODOLOGY
 
 PORTFOLIO ALLOCATION METHODOLOGY
 -------------------------------
-• Expected returns: Based on 20-year historical averages (1985-2025)
-  - Large Cap: ~10% (S&P 500 performance)
-  - Small Cap: ~12% (Russell 2000 premium)
-  - International: ~9% (MSCI EAFE)
-  - Bonds: ~5% (10-year Treasury + corporate blend)
-  - Real Estate: ~8% (REIT index)
-  - Commodities: ~6% (CRB index)
-
-• Risk measures: Historical standard deviation
-  - Stocks: 15-20% volatility
-  - Bonds: 6% volatility (low risk)
-  - Alternatives: 14-18% volatility
+• Expected returns and volatilities are the workbook's stated assumptions.
+  This repository does not estimate them from a price history.
+  - Large cap: 10% return, 15% volatility
+  - Small cap: 12% return, 20% volatility
+  - International: 9% return, 17% volatility
+  - Bonds: 5% return, 6% volatility
+  - Real estate: 8% return, 14% volatility
+  - Commodities: 6% return, 18% volatility
 
 • Risk-free rate: 3% (current 10-year Treasury approximation)
 
@@ -387,7 +383,9 @@ PORTFOLIO ALLOCATION METHODOLOGY
   - The Python covariance layer adds an illustrative correlation matrix
   - With that matrix, volatility is higher than the zero-correlation figure because the equity sleeves move together
 
-• Rebalancing: Not explicitly modeled but assumed annually
+• Rebalancing: Not modeled in the workbook. The Python backtest trades at the
+  close after the return, on a stated period count, and can charge commission
+  and slippage separately. It does not charge an opening trade.
 
 
 BEST PRACTICES FOR FINANCIAL MODELING
