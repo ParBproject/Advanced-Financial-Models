@@ -291,13 +291,53 @@ def render_portfolio() -> None:
             "and the rescale is shown below."
         )
     )
-    edited = st.data_editor(
-        portfolio_frame(),
-        hide_index=True,
-        use_container_width=True,
-        num_rows="fixed",
-        key="portfolio_editor",
-    )
+    # st.data_editor needs pyarrow.arrow_table, which the browser runtime does not provide.
+    baseline = portfolio_frame()
+    headers = st.columns([1.6, 1, 1, 1])
+    headers[0].caption("Asset")
+    headers[1].caption("Expected return %")
+    headers[2].caption("Volatility %")
+    headers[3].caption("Weight %")
+    edited_rows = []
+    for position, row in enumerate(baseline.itertuples(index=False)):
+        name, expected_return, volatility, weight = row
+        fields = st.columns([1.6, 1, 1, 1])
+        fields[0].markdown(f"**{name}**")
+        expected_value = fields[1].number_input(
+            f"Expected return % for {name}",
+            value=float(expected_return),
+            step=0.5,
+            format="%.2f",
+            key=f"return-{position}",
+            label_visibility="collapsed",
+        )
+        volatility_value = fields[2].number_input(
+            f"Volatility % for {name}",
+            min_value=0.0,
+            value=float(volatility),
+            step=0.5,
+            format="%.2f",
+            key=f"volatility-{position}",
+            label_visibility="collapsed",
+        )
+        weight_value = fields[3].number_input(
+            f"Weight % for {name}",
+            min_value=0.0,
+            value=float(weight),
+            step=0.5,
+            format="%.2f",
+            key=f"weight-{position}",
+            label_visibility="collapsed",
+        )
+        edited_rows.append(
+            {
+                "Asset": str(name),
+                "Expected return %": expected_value,
+                "Volatility %": volatility_value,
+                "Weight %": weight_value,
+            }
+        )
+    edited = pd.DataFrame(edited_rows)
     n_portfolios = st.slider("Simulated portfolios", 1_000, 20_000, 8_000, 1_000)
     weight_sum = float(edited["Weight %"].sum())
     if abs(weight_sum - 100.0) > 0.05:
